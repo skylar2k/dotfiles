@@ -20,7 +20,27 @@ require("lazy").setup({
         "nvim-telescope/telescope.nvim",
         tag = "0.1.2",
         dependencies = {"nvim-lua/plenary.nvim"}
-    }, {"folke/tokyonight.nvim", lazy = false, priority = 1000, opts = {}}
+    }, {"folke/tokyonight.nvim", lazy = false, priority = 1000, opts = {}}, {
+        "nvim-treesitter/nvim-treesitter",
+        opt = {
+            highlight = {enable = true},
+            indent = {enable = true},
+            ensure_installed = {
+                "bash", "c", "html", "javascript", "json", "lua", "luadoc",
+                "luap", "markdown", "markdown_inline", "python", "query",
+                "regex", "tsx", "typescript", "vim", "vimdoc", "yaml"
+            },
+            incremental_selection = {
+                enable = true,
+                keymaps = {
+                    init_selection = "<C-space>",
+                    node_incremental = "<C-space>",
+                    scope_incremental = false,
+                    node_decremental = "<bs>"
+                }
+            }
+        }
+    }
 })
 
 -- Variables
@@ -52,3 +72,4 @@ vim.opt.tabstop = 4
 vim.opt.softtabstop = 4
 vim.opt.shiftwidth = 4
 vim.opt.autoindent = true
+vim.opt.expandtab = true

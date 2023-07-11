@@ -6,12 +6,11 @@
 ;; to the 'guix system reconfigure' command to effect your
 ;; changes.
 
-
 ;; Indicate which modules to import to access the variables
 ;; used in this configuration.
 (use-modules (gnu)
-			 (nongnu packages linux)
-			 (nongnu system linux-initrd))
+             (nongnu packages linux)
+             (nongnu system linux-initrd))
 (use-service-modules cups desktop networking ssh xorg)
 (use-package-modules security-token)
 
@@ -30,30 +29,29 @@
                   (comment "init5")
                   (group "users")
                   (home-directory "/home/init5")
-                  (supplementary-groups '("wheel" "netdev" "audio" "video" "plugdev")))
-                %base-user-accounts))
+                  (supplementary-groups '("wheel" "netdev" "audio" "video"
+                                          "plugdev"))) %base-user-accounts))
 
   ;; Packages installed system-wide.  Users can also install packages
   ;; under their own account: use 'guix search KEYWORD' to search
   ;; for packages and 'guix install PACKAGE' to install a package.
   (packages (append (list (specification->package "nss-certs")
-						  (specification->package "sway"))
-                    %base-packages))
+                          (specification->package "sway")) %base-packages))
 
   ;; Below is the list of system services.  To search for available
   ;; services, run 'guix system search KEYWORD' in a terminal.
-  (services (cons*
-			  (udev-rules-service 'fido2 libfido2 #:groups '("plugdev"))
-			  (modify-services %desktop-services
-  							 (delete gdm-service-type))))
+  (services
+   (cons* (udev-rules-service 'fido2 libfido2
+                              #:groups '("plugdev"))
+          (modify-services %desktop-services
+            (delete gdm-service-type))))
 
   (bootloader (bootloader-configuration
                 (bootloader grub-efi-bootloader)
                 (targets (list "/boot/efi"))
                 (keyboard-layout keyboard-layout)))
   (swap-devices (list (swap-space
-                        (target (uuid
-                                 "2d55cb03-e7a6-4232-8028-3db648571bd2")))))
+                        (target (uuid "2d55cb03-e7a6-4232-8028-3db648571bd2")))))
   ;; The list of file systems that get "mounted".  The unique
   ;; file system identifiers there ("UUIDs") can be obtained
   ;; by running 'blkid' in a terminal.
@@ -64,7 +62,6 @@
                          (type "vfat"))
                        (file-system
                          (mount-point "/")
-                         (device (uuid
-                                  "2b1d903a-576d-4025-89cc-479c099ef6bf"
-                                  'ext4))
+                         (device (uuid "2b1d903a-576d-4025-89cc-479c099ef6bf"
+                                       'ext4))
                          (type "ext4")) %base-file-systems)))

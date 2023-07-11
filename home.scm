@@ -5,30 +5,29 @@
 ;; See the "Replicating Guix" section in the manual.
 
 (use-modules (gnu home)
-			 (gnu packages)
-			 (gnu packages ssh)
-			 (gnu packages vim)
-			 (gnu packages terminals)
-			 (gnu packages xdisorg)
-			 (gnu packages rust-apps)
-			 (nongnu packages mozilla)
-			 (gnu services)
-			 (guix gexp)
-			 (gnu home services)
-			 (gnu home services ssh)
-			 (gnu home services shells))
+             (gnu packages)
+             (gnu packages ssh)
+             (gnu packages vim)
+             (gnu packages terminals)
+             (gnu packages xdisorg)
+             (gnu packages rust-apps)
+             (nongnu packages mozilla)
+             (gnu services)
+             (guix gexp)
+             (gnu home services)
+             (gnu home services ssh)
+             (gnu home services shells))
 
 (home-environment
   ;; Below is the list of packages that will show up in your
   ;; Home profile, under ~/.guix-home/profile.
-  (packages (specifications->packages
-			  (list "neovim" ;; Terminal tools
-					"ripgrep"
-					"alacritty"
-					"git"
-					"openssh"
-					"bemenu" ;; WM stuff
-					"firefox")))
+  (packages (specifications->packages (list "neovim" ;Terminal tools
+                                            "ripgrep"
+                                            "alacritty"
+                                            "git"
+                                            "openssh"
+                                            "bemenu" ;WM stuff
+                                            "firefox")))
 
   ;; Below is the list of Home services.  To search for available
   ;; services, run 'guix home search KEYWORD' in a terminal.
@@ -39,8 +38,8 @@
                               ("ls" . "ls -p --color=auto")))
                    (bashrc (list (local-file "files/bashrc")))
                    (bash-profile (list (local-file "files/bash_profile")))))
-		 (simple-service 'setup-xdg-home-config
-						 home-xdg-configuration-files-service-type
-						 `(("nvim/init.lua", (local-file "files/nvim/init.lua"))
-						   ("sway/config", (local-file "files/sway"))))
-		 (service home-openssh-service-type))))
+         (simple-service 'setup-xdg-home-config
+                         home-xdg-configuration-files-service-type
+                         `(("nvim/init.lua" ,(local-file "files/nvim/init.lua"))
+                           ("sway/config" ,(local-file "files/sway"))))
+         (service home-openssh-service-type))))
