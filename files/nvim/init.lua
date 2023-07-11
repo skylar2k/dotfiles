@@ -12,7 +12,45 @@ if not vim.loop.fs_stat(lazypath) then
 end
 vim.opt.rtp:prepend(lazypath)
 
-require("lazy").setup(plugins, opts)
+require("lazy").setup({
+	{
+		"folke/which-key.nvim",
+		event = "VeryLazy",
+  		init = function()
+  		  vim.o.timeout = true
+  		  vim.o.timeoutlen = 300
+  		end
+	},
+	{
+		"nvim-telescope/telescope.nvim", tag = "0.1.2",
+		dependencies = { "nvim-lua/plenary.nvim" }
+	},
+	{
+		"folke/tokyonight.nvim",
+		lazy = false,
+		priority = 1000,
+		opts = {},
+	},
+})
+
+-- Variables
+local wk = require("which-key")
+local ts = require('telescope.builtin')
+
+-- Keybindings
+vim.g.mapleader = " "
+
+wk.register({
+	f = {
+		name = "File",
+		f = { ts.find_files, "Find file" },
+		g = { ts.live_grep, "Live grep" },
+	},
+	b = {
+		name = "Buffer",
+		b = { ts.buffers, "Open buffers" },
+	},
+}, { prefix = "<leader>" })
 
 -- Search
 vim.opt.ignorecase = true
@@ -20,6 +58,7 @@ vim.opt.smartcase = true
 
 -- Visual
 vim.opt.relativenumber = true
+vim.cmd[[colorscheme tokyonight]]
 
 -- Tab
 vim.opt.tabstop = 4
