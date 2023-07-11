@@ -7,6 +7,7 @@
 (use-modules (gnu home)
              (gnu packages)
              (gnu packages vim)
+             (gnu packages terminals)
              (gnu services)
              (guix gexp)
              (gnu home services)
@@ -16,7 +17,8 @@
   ;; Below is the list of packages that will show up in your
   ;; Home profile, under ~/.guix-home/profile.
   (packages (specifications->packages (list "neovim"
-						"git")))
+											"git"
+											"alacritty")))
 
   ;; Below is the list of Home services.  To search for available
   ;; services, run 'guix home search KEYWORD' in a terminal.
@@ -30,4 +32,5 @@
                                                    "bash_profile")))))
 	(simple-service 'setup-xdg-home-config
 			home-xdg-configuration-files-service-type
-			`(("nvim/init.lua", (local-file "files/nvim/init.lua")))))))
+			`(("nvim/init.lua", (local-file "files/nvim/init.lua"))
+			  ("sway/config", (local-file "files/sway")))))))
