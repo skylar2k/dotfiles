@@ -9,6 +9,7 @@
              (gnu packages vim)
              (gnu services)
              (guix gexp)
+             (gnu home services)
              (gnu home services shells))
 
 (home-environment
@@ -26,4 +27,7 @@
                               ("ls" . "ls -p --color=auto")))
                    (bashrc (list (local-file "./.bashrc" "bashrc")))
                    (bash-profile (list (local-file "./.bash_profile"
-                                                   "bash_profile"))))))))
+                                                   "bash_profile")))))
+	(simple-service 'setup-xdg-home-config
+			home-xdg-configuration-files-service-type
+			`(("nvim/init.lua", (local-file "files/nvim/init.lua")))))))
