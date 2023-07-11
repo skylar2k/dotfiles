@@ -8,6 +8,8 @@
              (gnu packages)
              (gnu packages vim)
              (gnu packages terminals)
+             (gnu packages xdisorg)
+			 (nongnu packages mozilla)
              (gnu services)
              (guix gexp)
              (gnu home services)
@@ -18,7 +20,9 @@
   ;; Home profile, under ~/.guix-home/profile.
   (packages (specifications->packages (list "neovim"
 											"git"
-											"alacritty")))
+											"alacritty"
+											"bemenu"
+											"firefox")))
 
   ;; Below is the list of Home services.  To search for available
   ;; services, run 'guix home search KEYWORD' in a terminal.
