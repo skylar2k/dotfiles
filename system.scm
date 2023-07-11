@@ -13,6 +13,7 @@
 			 (nongnu packages linux)
 			 (nongnu system linux-initrd))
 (use-service-modules cups desktop networking ssh xorg)
+(use-package-modules security-token)
 
 (operating-system
   (locale "en_US.utf8")
@@ -29,7 +30,7 @@
                   (comment "init5")
                   (group "users")
                   (home-directory "/home/init5")
-                  (supplementary-groups '("wheel" "netdev" "audio" "video")))
+                  (supplementary-groups '("wheel" "netdev" "audio" "video" "plugdev")))
                 %base-user-accounts))
 
   ;; Packages installed system-wide.  Users can also install packages
@@ -41,8 +42,10 @@
 
   ;; Below is the list of system services.  To search for available
   ;; services, run 'guix system search KEYWORD' in a terminal.
-  (services (modify-services %desktop-services
-  							 (delete gdm-service-type)))
+  (services (cons*
+			  (udev-rules-service 'fido2 libfido2 #:groups '("plugdev"))
+			  (modify-services %desktop-services
+  							 (delete gdm-service-type))))
 
   (bootloader (bootloader-configuration
                 (bootloader grub-efi-bootloader)

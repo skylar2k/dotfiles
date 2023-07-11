@@ -6,6 +6,7 @@
 
 (use-modules (gnu home)
 			 (gnu packages)
+			 (gnu packages ssh)
 			 (gnu packages vim)
 			 (gnu packages terminals)
 			 (gnu packages xdisorg)
@@ -14,6 +15,7 @@
 			 (gnu services)
 			 (guix gexp)
 			 (gnu home services)
+			 (gnu home services ssh)
 			 (gnu home services shells))
 
 (home-environment
@@ -24,6 +26,7 @@
 					"ripgrep"
 					"alacritty"
 					"git"
+					"openssh"
 					"bemenu" ;; WM stuff
 					"firefox")))
 
@@ -39,4 +42,5 @@
 		 (simple-service 'setup-xdg-home-config
 						 home-xdg-configuration-files-service-type
 						 `(("nvim/init.lua", (local-file "files/nvim/init.lua"))
-						   ("sway/config", (local-file "files/sway")))))))
+						   ("sway/config", (local-file "files/sway"))))
+		 (service home-openssh-service-type))))
