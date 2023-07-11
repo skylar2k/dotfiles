@@ -5,15 +5,15 @@
 ;; See the "Replicating Guix" section in the manual.
 
 (use-modules (gnu home)
-             (gnu packages)
-             (gnu packages vim)
-             (gnu packages terminals)
-             (gnu packages xdisorg)
+			 (gnu packages)
+			 (gnu packages vim)
+			 (gnu packages terminals)
+			 (gnu packages xdisorg)
 			 (nongnu packages mozilla)
-             (gnu services)
-             (guix gexp)
-             (gnu home services)
-             (gnu home services shells))
+			 (gnu services)
+			 (guix gexp)
+			 (gnu home services)
+			 (gnu home services shells))
 
 (home-environment
   ;; Below is the list of packages that will show up in your
@@ -31,10 +31,9 @@
                   (home-bash-configuration
                    (aliases '(("grep" . "grep --color=auto") ("ll" . "ls -l")
                               ("ls" . "ls -p --color=auto")))
-                   (bashrc (list (local-file "./.bashrc" "bashrc")))
-                   (bash-profile (list (local-file "./.bash_profile"
-                                                   "bash_profile")))))
-	(simple-service 'setup-xdg-home-config
-			home-xdg-configuration-files-service-type
-			`(("nvim/init.lua", (local-file "files/nvim/init.lua"))
-			  ("sway/config", (local-file "files/sway")))))))
+                   (bashrc (list (local-file "files/bashrc")))
+                   (bash-profile (list (local-file "files/bash_profile")))))
+		 (simple-service 'setup-xdg-home-config
+						 home-xdg-configuration-files-service-type
+						 `(("nvim/init.lua", (local-file "files/nvim/init.lua"))
+						   ("sway/config", (local-file "files/sway")))))))
