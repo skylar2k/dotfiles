@@ -41,5 +41,6 @@
          (simple-service 'setup-xdg-home-config
                          home-xdg-configuration-files-service-type
                          `(("nvim/init.lua" ,(local-file "files/nvim/init.lua"))
-                           ("sway/config" ,(local-file "files/sway"))))
+                           ("sway/config" ,(local-file "files/sway"))
+                           ("alacritty.yml",(local-file "files/alacritty.yml"))))
          (service home-openssh-service-type))))

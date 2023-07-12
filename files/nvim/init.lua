@@ -19,26 +19,17 @@ require("lazy").setup({
     }, {
         "nvim-telescope/telescope.nvim",
         tag = "0.1.2",
-        dependencies = {"nvim-lua/plenary.nvim"}
+        dependencies = {"nvim-lua/plenary.nvim"},
     }, {"folke/tokyonight.nvim", lazy = false, priority = 1000, opts = {}}, {
         "nvim-treesitter/nvim-treesitter",
         opt = {
             highlight = {enable = true},
             indent = {enable = true},
             ensure_installed = {
-                "bash", "c", "html", "javascript", "json", "lua", "luadoc",
-                "luap", "markdown", "markdown_inline", "python", "query",
-                "regex", "tsx", "typescript", "vim", "vimdoc", "yaml"
+                "bash", "c", "json", "lua", "luadoc", "luap",
+                "markdown", "markdown_inline", "python", "regex",
+                "yaml"
             },
-            incremental_selection = {
-                enable = true,
-                keymaps = {
-                    init_selection = "<C-space>",
-                    node_incremental = "<C-space>",
-                    scope_incremental = false,
-                    node_decremental = "<bs>"
-                }
-            }
         }
     }
 })
@@ -65,7 +56,7 @@ vim.opt.smartcase = true
 
 -- Visual
 vim.opt.relativenumber = true
-vim.cmd [[colorscheme tokyonight]]
+vim.cmd.colorscheme("tokyonight")
 
 -- Tab
 vim.opt.tabstop = 4
