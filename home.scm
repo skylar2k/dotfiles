@@ -34,8 +34,6 @@
   (services
    (list (service home-bash-service-type
                   (home-bash-configuration
-                   (aliases '(("grep" . "grep --color=auto") ("ll" . "ls -l")
-                              ("ls" . "ls -p --color=auto")))
                    (bashrc (list (local-file "files/bashrc")))
                    (bash-profile (list (local-file "files/bash_profile")))))
          (simple-service 'setup-xdg-home-config
@@ -43,4 +41,5 @@
                          `(("nvim/init.lua" ,(local-file "files/nvim/init.lua"))
                            ("sway/config" ,(local-file "files/sway"))
                            ("alacritty.yml",(local-file "files/alacritty.yml"))))
-         (service home-openssh-service-type))))
+         (service home-openssh-service-type)
+         (service home-ssh-agent-service-type))))
