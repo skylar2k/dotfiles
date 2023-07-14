@@ -40,6 +40,7 @@
                          home-xdg-configuration-files-service-type
                          `(("nvim/init.lua" ,(local-file "files/nvim/init.lua"))
                            ("sway/config" ,(local-file "files/sway"))
-                           ("alacritty.yml",(local-file "files/alacritty.yml"))))
+                           ("alacritty.yml" ,(local-file "files/alacritty.yml"))
+                           ("guix/channels.scm" ,(local-file "channels.scm"))))
          (service home-openssh-service-type)
          (service home-ssh-agent-service-type))))
