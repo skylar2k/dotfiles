@@ -19,6 +19,33 @@ function Layouts:new(config, spoonRef)
 end
 
 --------------------------------------------------------------------------------
+-- Placing windows
+--------------------------------------------------------------------------------
+
+local FRAME_TOLERANCE = 1.5 -- px: windows round to whole pixels, so smaller differences are noise
+
+--- Move/resize a window, unless it is already there. Every accessibility write costs time and makes the
+--- app report a move, which would trigger another layout pass; skipping no-ops ends that loop.
+function Layouts:place(win, f)
+    local ok, cur = pcall(win.frame, win)
+    if ok and cur
+        and math.abs(cur.x - f.x) < FRAME_TOLERANCE and math.abs(cur.y - f.y) < FRAME_TOLERANCE
+        and math.abs(cur.w - f.w) < FRAME_TOLERANCE and math.abs(cur.h - f.h) < FRAME_TOLERANCE then
+        return
+    end
+    pcall(win.setFrame, win, f)
+end
+
+--- Park a window's top-left corner, unless it is already there
+function Layouts:park(win, pos)
+    local ok, cur = pcall(win.frame, win)
+    if ok and cur and math.abs(cur.x - pos.x) < FRAME_TOLERANCE and math.abs(cur.y - pos.y) < FRAME_TOLERANCE then
+        return
+    end
+    pcall(win.setTopLeft, win, pos)
+end
+
+--------------------------------------------------------------------------------
 -- TILING LAYOUT (Unified Master/BSP replacement)
 -- Default: master-stack (60/40), with manual column/row creation
 --------------------------------------------------------------------------------
@@ -93,14 +120,7 @@ function Layouts:layout_tile(screen, wins)
             for rowIdx, winId in ipairs(col.windows) do
                 local win = winMap[winId]
                 if win then
-                    pcall(function()
-                        win:setFrame({
-                            x = xPos,
-                            y = yPos,
-                            w = colWidth,
-                            h = rowHeights[rowIdx]
-                        })
-                    end)
+                    self:place(win, { x = xPos, y = yPos, w = colWidth, h = rowHeights[rowIdx] })
                 end
                 yPos = yPos + rowHeights[rowIdx] + gap
             end
@@ -115,8 +135,7 @@ function Layouts:tileBuildDefaultStructure(wins)
     self.tileColumns = {}
     if #wins == 0 then return end
 
-    local masterRatio = self.spoon.state.splitRatios and self.spoon.state.splitRatios["tiling_master"] or
-        self.defaultMasterRatio
+    local masterRatio = self.defaultMasterRatio
 
     if #wins == 1 then
         -- Single window: fullscreen
@@ -554,7 +573,7 @@ function Layouts:layout_scroll(screen, wins)
                     w = colWidth,
                     h = windowHeight
                 }
-                pcall(function() win:setFrame(frame) end)
+                self:place(win, frame)
             end
         end
 
@@ -574,7 +593,7 @@ function Layouts:layout_scroll(screen, wins)
         end
     end
 
-    -- Hide windows in non-visible columns (bottom-right, like workspace hiding)
+    -- Hide windows in non-visible columns (bottom-right, like tag hiding)
     local visibleSet = {}
     for _, colInfo in ipairs(visibleCols) do visibleSet[colInfo.idx] = true end
 
@@ -590,7 +609,7 @@ function Layouts:layout_scroll(screen, wins)
             for _, winId in ipairs(col) do
                 local win = winMap[winId]
                 if win then
-                    pcall(function() win:setTopLeft(offScreenPos) end)
+                    self:park(win, offScreenPos)
                 end
             end
         end
@@ -742,70 +761,17 @@ end
 --------------------------------------------------------------------------------
 
 function Layouts:layout_stack(screen, wins)
-    if #wins == 0 then
-        -- Clear stack tracking when no windows
-        if self.spoon.state then
-            self.spoon.state.stackHiddenWindows = {}
-        end
-        return
-    end
+    if #wins == 0 then return end
 
-    local gap = self.spoon.config.gap or 8
+    -- The first window gets the whole screen; the others wait behind it, parked at the bottom-right
+    -- corner (AeroSpace-style), each 1px lower so they stay distinct. Focus is never changed here:
+    -- whoever reorders the stack (rotation, tag switch) decides what gets focus.
+    local top = wins[1]
+    self:place(top, { x = screen.x, y = screen.y, w = screen.w, h = screen.h })
+    pcall(top.raise, top)
 
-    -- Initialize stack tracking
-    if self.spoon.state then
-        self.spoon.state.stackHiddenWindows = {}
-    end
-
-    -- First window gets full screen
-    if #wins == 1 then
-        pcall(function()
-            wins[1]:setFrame(screen)
-            wins[1]:raise()
-            wins[1]:focus()
-        end)
-        return
-    end
-
-    -- Calculate the frame for the main (top) window with some margin for visibility
-    local mainFrame = {
-        x = screen.x,
-        y = screen.y,
-        w = screen.w,
-        h = screen.h
-    }
-
-    -- First window (focused) gets the full frame
-    pcall(function()
-        wins[1]:setFrame(mainFrame)
-        wins[1]:raise()
-        wins[1]:focus()
-    end)
-
-    -- Hidden windows: position off-screen at bottom-right corner (AeroSpace-style)
-    -- Use hs.axuielement for direct accessibility API positioning
     for i = 2, #wins do
-        local offset = (i - 2) -- Stack with 1px spacing
-        local hiddenPos = {
-            x = screen.x + screen.w - 1,
-            y = screen.y + screen.h - 1 + offset
-        }
-
-        -- Track this window as intentionally hidden by stack layout
-        local ok, winId = pcall(function() return wins[i]:id() end)
-        if ok and winId and self.spoon.state then
-            self.spoon.state.stackHiddenWindows[winId] = true
-        end
-
-        pcall(function()
-            -- Use accessibility API for more precise positioning
-            local axWin = hs.axuielement.windowElement(wins[i])
-            if axWin then
-                axWin:setAttributeValue("AXPosition", hiddenPos)
-            else
-                wins[i]:setTopLeft(hiddenPos)
-            end
-        end)
+        self:park(wins[i], { x = screen.x + screen.w - 1, y = screen.y + screen.h - 1 + (i - 2) })
     end
 end
 

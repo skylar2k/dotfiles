@@ -5,100 +5,74 @@ UI.__index = UI
 function UI:new(spoon)
     local o = setmetatable({}, self)
     o.spoon = spoon
-    o.focusedWindowCanvas = nil
-    o.stackIndicatorsCanvas = nil
+    o.canvas = nil -- The focus indicator: created once, then moved and recolored
     return o
 end
 
+local function hideIndicator(self)
+    if self.canvas then pcall(function() self.canvas:hide() end) end
+end
+
+local function ensureCanvas(self, frame)
+    if self.canvas then return self.canvas end
+    local ok, canvas = pcall(hs.canvas.new, frame)
+    if not ok or not canvas then return nil end
+    canvas:level(hs.canvas.windowLevels.overlay)
+    canvas:appendElements({ type = "rectangle", action = "fill" })
+    self.canvas = canvas
+    return canvas
+end
+
+--- A small bar at the bottom center of the focused window, in the color of the current layout
 function UI:updateFocusedWindowIndicator()
-    -- Clean up existing indicator safely
-    if self.focusedWindowCanvas then
-        pcall(function() self.focusedWindowCanvas:delete() end)
-        self.focusedWindowCanvas = nil
-    end
+    local spoon = self.spoon
+    local config = spoon.config.focusedWindowIndicator
+    if not config or config.enabled == false then return hideIndicator(self) end
 
-    -- Check if indicator is enabled
-    local indicatorConfig = self.spoon.config.focusedWindowIndicator
-    if indicatorConfig and indicatorConfig.enabled == false then return end
-
-    local layoutIndex = self.spoon:getLayoutForCurrentSpace()
-    if not layoutIndex then return end
-
-    local layout = self.spoon.layouts[layoutIndex]
-    if not layout or layout == "stack" then return end
+    local layout = spoon:getCurrentLayoutName()
+    if not layout or layout == "stack" then return hideIndicator(self) end
 
     local win = hs.window.focusedWindow()
-    if not win then return end
+    local winId = win and spoon.helpers:getWindowId(win)
+    if not winId or not spoon.tags:isTiled(winId) then return hideIndicator(self) end -- Only tiled windows in view
 
-    -- Only tiled windows of the current workspace get an indicator
-    local winId = self.spoon.helpers:getWindowId(win)
-    if not winId or not self.spoon.workspaceManager:isTiled(winId) then return end
+    local ok, frame = pcall(win.frame, win)
+    local color = spoon.config.modeColors[layout]
+    if not ok or not frame or not color then return hideIndicator(self) end
 
-    local ok2, frame = pcall(function() return win:frame() end)
-    if not ok2 or not frame then return end
+    local width, height = config.width or 50, config.height or 4
+    local rect = {
+        x = frame.x + (frame.w - width) / 2,
+        y = frame.y + frame.h - height,
+        w = width,
+        h = height,
+    }
 
-    local color = self.spoon.config.modeColors[layout]
-    if not color then return end
+    local canvas = ensureCanvas(self, rect)
+    if not canvas then return end
 
-    -- Create a small indicator at the bottom center of the window
-    local indicatorConfig = self.spoon.config.focusedWindowIndicator
-    if not indicatorConfig then return end
-
-    local indicatorWidth = indicatorConfig.width or 50
-    local indicatorHeight = indicatorConfig.height or 4
-    local x = frame.x + (frame.w - indicatorWidth) / 2
-    local y = frame.y + frame.h - indicatorHeight
-
-    local canvasOk, canvas = pcall(function()
-        return hs.canvas.new({
-            x = x,
-            y = y,
-            w = indicatorWidth,
-            h = indicatorHeight
-        })
-    end)
-
-    if not canvasOk or not canvas then return end
-
-    self.focusedWindowCanvas = canvas
-
+    local radius = config.borderRadius or 2
     pcall(function()
-        self.focusedWindowCanvas:level(hs.canvas.windowLevels.overlay)
-        self.focusedWindowCanvas:appendElements({
-            type = "rectangle",
-            action = "fill",
-            fillColor = {
-                red = color.red or 0.5,
-                green = color.green or 0.5,
-                blue = color.blue or 0.5,
-                alpha = indicatorConfig.opacity or 0.9
-            },
-            roundedRectRadii = {
-                xRadius = indicatorConfig.borderRadius or 2,
-                yRadius = indicatorConfig.borderRadius or 2
-            }
-        })
-        self.focusedWindowCanvas:show()
+        canvas:frame(rect)
+        canvas[1].fillColor = {
+            red = color.red or 0.5,
+            green = color.green or 0.5,
+            blue = color.blue or 0.5,
+            alpha = config.opacity or 0.9,
+        }
+        canvas[1].roundedRectRadii = { xRadius = radius, yRadius = radius }
+        canvas:show()
     end)
 end
 
 function UI:updateAll()
     self:updateFocusedWindowIndicator()
-    -- Cleanup stack indicators if they exist
-    if self.stackIndicatorsCanvas then
-        pcall(function() self.stackIndicatorsCanvas:delete() end)
-        self.stackIndicatorsCanvas = nil
-    end
 end
 
 function UI:cleanup()
-    if self.focusedWindowCanvas then
-        pcall(function() self.focusedWindowCanvas:delete() end)
-        self.focusedWindowCanvas = nil
-    end
-    if self.stackIndicatorsCanvas then
-        pcall(function() self.stackIndicatorsCanvas:delete() end)
-        self.stackIndicatorsCanvas = nil
+    if self.canvas then
+        pcall(function() self.canvas:delete() end)
+        self.canvas = nil
     end
 end
 

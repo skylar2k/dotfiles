@@ -1,4 +1,4 @@
--- WM
+-- WM (dwm-style tags)
 local obj = {}
 obj.__index = obj
 
@@ -52,13 +52,11 @@ obj.config = {
         { subrole = "StandardWindow", app_id = "org.hammerspoon.Hammerspoon", action = "float" },
     },
     rules = {},
-    usePerSpaceLayouts = true,
 
     -- Consolidated sub-configs
     resizing = { step = 0.05, minRatio = 0.15, maxRatio = 0.85 },
     timing = { layoutUpdateDelay = 0.08, spaceChangeDelay = 0.12, initialSetupDelay = 0.15, windowLockDuration = 0.4, ruleRecheckDelay = 0.4 },
     focusedWindowIndicator = { width = 50, height = 4, opacity = 0.9, borderRadius = 2 },
-    stackIndicators = { enabled = true, position = "bottomLeft", width = 40, height = 5, spacing = 5, maxIndicators = 10, borderRadius = 2.5 },
     alerts = {
         enabled = true,
         position = "bottom",
@@ -79,17 +77,13 @@ obj.config = {
         stack = { red = 0.0, green = 0.475, blue = 0.549, alpha = 1 },    -- Teal
     },
 
-    -- Menubar workspace indicator
+    -- Menubar tag indicator
     menubar = {
         enabled = true,
         showWindowCount = true,
         activeColor = { red = 0.4, green = 0.8, blue = 0.4 },
         inactiveColor = { red = 0.5, green = 0.5, blue = 0.5 },
         hasWindowsColor = { red = 0.8, green = 0.8, blue = 0.8 },
-        -- Workspace names (defaults to numbers if not set)
-        workspaceNames = {},
-        -- Per-workspace colors (optional, uses layout color if not set)
-        workspaceColors = {},
     }
 }
 
@@ -97,21 +91,12 @@ obj.config = {
 obj.layouts = { "tile", "scroll", "stack" }
 obj.settingsFile = (hs.configdir or (os.getenv("HOME") .. "/.hammerspoon")) .. "/wm_settings.json"
 obj.state = {
-    currentLayout = 1,
-    windows = {},
-    floatingWindows = {},
+    windows = {},          -- Tiled windows in view, in layout order (rebuilt on every layout pass)
     floatingSteps = {},
-    splitRatios = {},
-    tileEnabled = true, -- Global tiling toggle (persisted)
-    splitDirections = {},
-    windowTree = {},
-    spaceLayouts = {},
-    spaceWindowOrder = {},
-    layoutChanged = false,
-    ignoreNextUpdate = false,
+    tileEnabled = true,    -- Global tiling toggle (persisted)
     alertUUID = nil,
     fullscreenWindows = {},
-    ready = false -- Set once startup is complete; settings are never written before this
+    ready = false          -- Set once startup is complete; settings are never written before this
 }
 
 -- Load modules
@@ -119,7 +104,7 @@ local Core = dofile(hs.spoons.resourcePath("core.lua"))
 local UI = dofile(hs.spoons.resourcePath("ui.lua"))
 local Helpers = dofile(hs.spoons.resourcePath("helpers.lua"))
 local API = dofile(hs.spoons.resourcePath("api.lua"))
-local WorkspaceManager = dofile(hs.spoons.resourcePath("workspace_manager.lua"))
+local Tags = dofile(hs.spoons.resourcePath("tags.lua"))
 local Layouts = dofile(hs.spoons.resourcePath("layouts.lua"))
 local Rules = dofile(hs.spoons.resourcePath("rules.lua"))
 local Menubar = dofile(hs.spoons.resourcePath("menubar.lua"))
@@ -163,163 +148,34 @@ function obj:init()
     self.ui = UI:new(self)
     self.core = Core:new(self)
     self.api = API:new(self)
-    self.workspaceManager = WorkspaceManager:new(self)
+    self.tags = Tags:new(self)
     self.layoutsModule = Layouts:new(self.config, self)
     self.menubar = Menubar:new(self)
 
     self:loadSettings()
-
-    -- Apply saved workspace layouts
-    if self.state.pendingWorkspaceLayouts then
-        for i, layout in pairs(self.state.pendingWorkspaceLayouts) do
-            local wsIndex = tonumber(i)
-            if wsIndex and self.workspaceManager.workspaces[wsIndex] then
-                self.workspaceManager.workspaces[wsIndex].layout = layout
-            end
-        end
-        self.state.pendingWorkspaceLayouts = nil
-    end
-
     return self
 end
 
--- Space management functions
-function obj:getCurrentSpaceID()
-    local screen = hs.screen.mainScreen()
-    return screen and tostring(hs.spaces.activeSpaceOnScreen(screen))
+-- Layout of the current tag (dwm pertag: each tag has its own layout)
+function obj:getLayoutIndex()
+    return self.tags:getPertag().layout or 1
 end
 
--- Get layout for current workspace (independent of macOS Spaces)
-function obj:getLayoutForCurrentSpace()
-    local wm = self.workspaceManager
-    if wm then
-        local ws = wm:getCurrentWorkspace()
-        return ws.layout or 1
-    end
-    return self.state.currentLayout
+function obj:setLayoutIndex(layoutIndex)
+    self.tags:getPertag().layout = layoutIndex
 end
 
--- Name of the layout ("tile" | "scroll" | "stack") for the current workspace
+-- Name of the layout ("tile" | "scroll" | "stack") of the current tag
 function obj:getCurrentLayoutName()
-    return self.layouts[self:getLayoutForCurrentSpace()]
+    return self.layouts[self:getLayoutIndex()]
 end
 
--- Set layout for current workspace
-function obj:setLayoutForCurrentSpace(layoutIndex)
-    local wm = self.workspaceManager
-    if wm then
-        local ws = wm:getCurrentWorkspace()
-        ws.layout = layoutIndex
-    end
-    self.state.currentLayout = layoutIndex
-end
-
--- Window order management
--- Saved window order is tracked per workspace (not per macOS Space): workspaces share one Space
-function obj:getOrderKey()
-    local wm = self.workspaceManager
-    return wm and ("ws" .. wm.current) or self:getCurrentSpaceID()
-end
-
-function obj:saveWindowOrderForCurrentSpace()
-    local orderKey = self:getOrderKey()
-    if not orderKey or not self.state.windows then return end
-
-    local windowOrder = {}
-    for i, win in ipairs(self.state.windows) do
-        if win then
-            local ok, winId = pcall(function() return win:id() end)
-            local isStandard = false
-            pcall(function() isStandard = win:isStandard() end)
-
-            if ok and winId and isStandard then
-                local app = win:application()
-                if app then
-                    local appName = ""
-                    local bundleID = ""
-                    local title = ""
-                    pcall(function() appName = app:name() or "" end)
-                    pcall(function() bundleID = app:bundleID() or "" end)
-                    pcall(function() title = win:title() or "" end)
-
-                    table.insert(windowOrder, {
-                        id = winId,
-                        app = appName,
-                        title = title,
-                        bundleID = bundleID,
-                        index = i
-                    })
-                end
-            end
-        end
-    end
-
-    self.state.spaceWindowOrder[orderKey] = windowOrder
-end
-
-function obj:restoreWindowOrderForCurrentSpace()
-    local orderKey = self:getOrderKey()
-    if not orderKey or not self.state.spaceWindowOrder[orderKey] then return false end
-
-    local savedOrder = self.state.spaceWindowOrder[orderKey]
-
-    local currentWindows = self.workspaceManager:getWindowsForLayout()
-
-    if #currentWindows == 0 then return false end
-
-    -- Create window map for quick lookup
-    local windowMap = {}
-    for _, win in ipairs(currentWindows) do
-        local ok, winId = pcall(function() return win:id() end)
-        if ok and winId then
-            windowMap[winId] = win
-        end
-    end
-
-    local orderedWindows, usedIds = {}, {}
-
-    -- First pass: restore existing windows in saved order
-    for _, saved in ipairs(savedOrder) do
-        if saved.id and windowMap[saved.id] and not usedIds[saved.id] then
-            table.insert(orderedWindows, windowMap[saved.id])
-            usedIds[saved.id] = true
-        end
-    end
-
-    -- Second pass: add remaining windows (new windows not in saved order)
-    for _, win in ipairs(currentWindows) do
-        local ok, winId = pcall(function() return win:id() end)
-        if ok and winId and not usedIds[winId] then
-            table.insert(orderedWindows, win)
-            usedIds[winId] = true
-        end
-    end
-
-    if #orderedWindows > 0 then
-        self.state.windows = orderedWindows
-        return true
-    end
-
-    return false
-end
-
-function obj:updateLayout(preserveOrder)
-    -- Sync currentLayout from workspace manager
-    local wm = self.workspaceManager
-    if wm then
-        local ws = wm:getCurrentWorkspace()
-        self.state.currentLayout = ws.layout or 1
-    end
-
-    if not preserveOrder then
-        preserveOrder = self:restoreWindowOrderForCurrentSpace()
-    end
-
-    self.core:updateLayout(preserveOrder)
+function obj:updateLayout()
+    self.core:updateLayout()
     self:saveSettings()
 end
 
--- Settings management with streamlined logic
+-- Settings management
 function obj:loadSettings()
     local file = io.open(self.settingsFile, "r")
     if not file then return end -- First run: nothing to load
@@ -334,35 +190,15 @@ function obj:loadSettings()
         return
     end
 
-    -- Load state (excluding runtime-only fields)
-    local excludedStateKeys = { alertUUID = true, floatingWindows = true, floatingSteps = true, ready = true }
-    for k, v in pairs(settings) do
-        if self.state[k] ~= nil and not excludedStateKeys[k] then
-            self.state[k] = v
-        end
-    end
-
-    -- Convert floating window/step IDs from strings to numbers
-    local function convertIds(source, target)
-        if source then
-            for k, v in pairs(source) do
-                target[tonumber(k)] = v
-            end
-        end
-    end
-
-    convertIds(settings.floatingWindows, self.state.floatingWindows)
-    convertIds(settings.floatingSteps, self.state.floatingSteps)
-
     if type(settings.tileEnabled) == "boolean" then self.state.tileEnabled = settings.tileEnabled end
 
-    -- Workspace assignments are restored when the spoon starts (see API:start)
-    self.state.pendingWorkspaces = settings.workspaces
-
-    -- Store workspace layouts to apply after workspaceManager is initialized
-    if settings.workspaceLayouts then
-        self.state.pendingWorkspaceLayouts = settings.workspaceLayouts
+    -- Floating step ids come back from JSON as strings
+    for k, v in pairs(settings.floatingSteps or {}) do
+        self.state.floatingSteps[tonumber(k)] = v
     end
+
+    -- The tag session is restored when the spoon starts (see API:start)
+    self.state.pendingTags = settings.tags
 
     -- Load config with deep merge
     if settings.config then
@@ -395,44 +231,21 @@ function obj:saveSettings(immediate)
 end
 
 function obj:writeSettings()
-    -- Convert floating IDs to strings for JSON serialization
-    local function convertIdsToStrings(source)
-        local result = {}
-        for id, v in pairs(source) do
-            result[tostring(id)] = v
-        end
-        return result
-    end
-
-    -- Save workspace layouts
-    local workspaceLayouts = {}
-    if self.workspaceManager then
-        for i = 1, 9 do
-            workspaceLayouts[i] = self.workspaceManager.workspaces[i].layout
-        end
-    end
+    -- Floating step ids become strings for JSON
+    local floatingSteps = {}
+    for id, v in pairs(self.state.floatingSteps) do floatingSteps[tostring(id)] = v end
 
     local settings = {
-        -- State
-        currentLayout = self.state.currentLayout,
         tileEnabled = self.state.tileEnabled,
-        splitRatios = self.state.splitRatios,
-        splitDirections = self.state.splitDirections,
-        floatingWindows = convertIdsToStrings(self.state.floatingWindows),
-        floatingSteps = convertIdsToStrings(self.state.floatingSteps),
-        spaceLayouts = self.state.spaceLayouts,
-        spaceWindowOrder = self.state.spaceWindowOrder,
-        workspaceLayouts = workspaceLayouts,
-        workspaces = self.workspaceManager and self.workspaceManager:serialize() or nil,
+        floatingSteps = floatingSteps,
+        tags = self.tags:serialize(),
 
         -- Config (only user-modifiable parts)
         config = {
-            usePerSpaceLayouts = self.config.usePerSpaceLayouts,
             resizing = self.config.resizing,
             timing = self.config.timing,
             focusedWindowIndicator = self.config.focusedWindowIndicator,
             alerts = self.config.alerts,
-            stackIndicators = self.config.stackIndicators
         }
     }
 

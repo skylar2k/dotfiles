@@ -1,26 +1,29 @@
 -- WM Menubar Module
--- Displays workspace indicators in the menubar (display only)
+-- Displays the tags in the menubar (display only: no menu, no click handling, so clicking it can
+-- never move focus or change the view)
 
 local Menubar = {}
 Menubar.__index = Menubar
 
+-- In view (filled) / has windows (solid) / empty (outline)
+local FILLED = { "❶", "❷", "❸", "❹", "❺", "❻", "❼", "❽", "❾" }
+local SOLID = { "➊", "➋", "➌", "➍", "➎", "➏", "➐", "➑", "➒" }
+local EMPTY = { "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨" }
+
+local LAYOUT_NAMES = { tile = "Tile", stack = "Stack", scroll = "Scroll" }
+local DIMMED = { red = 0.5, green = 0.5, blue = 0.5, alpha = 0.5 }
+
 function Menubar:new(spoon)
-    local obj = setmetatable({}, self)
-    obj.spoon = spoon
-    obj.menubarItem = nil
-    obj.canvas = nil
-    return obj
+    return setmetatable({ spoon = spoon, menubarItem = nil, lastKey = nil }, self)
 end
 
 function Menubar:start()
     if not self.spoon.config.menubar.enabled then return end
 
-    -- Create menubar item
     self.menubarItem = hs.menubar.new()
     if not self.menubarItem then return end
 
-    -- Indicator only: no menu and no click handling, so clicking it can never move focus or switch workspace
-    -- Initial update
+    self.lastKey = nil
     self:update()
 end
 
@@ -34,79 +37,46 @@ end
 function Menubar:update()
     if not self.menubarItem then return end
 
-    local wm = self.spoon.workspaceManager
-    if not wm then return end
+    local spoon = self.spoon
+    local tags = spoon.tags
+    if not tags then return end
 
-    local config = self.spoon.config.menubar
-    local current = wm.current
+    local config = spoon.config.menubar
+    local view, occupied = tags:viewMask(), tags:occupied()
+    local layout = spoon:getCurrentLayoutName()
+    local tilingEnabled = spoon.core:isTilingEnabled()
 
-    -- Get layout info for color
-    local layout = self.spoon:getCurrentLayoutName()
-    local tilingEnabled = self.spoon.core:isTilingEnabled()
-    local modeColors = self.spoon.config.modeColors or {}
+    -- Redraw only when something visible changed: layout passes call this very often
+    local key = string.format("%d|%d|%s|%s", view, occupied, tostring(layout), tostring(tilingEnabled))
+    if key == self.lastKey then return end
+    self.lastKey = key
 
-    -- Get layout color (used for current workspace and layout name)
-    local layoutColor = modeColors[layout] or config.activeColor
-
-    -- Workspace number symbols
-    local filledNumbers = { "❶", "❷", "❸", "❹", "❺", "❻", "❼", "❽", "❾" } -- Current workspace
-    local solidNumbers = { "➊", "➋", "➌", "➍", "➎", "➏", "➐", "➑", "➒" } -- Has windows
-    local emptyNumbers = { "①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨" } -- Empty
+    local layoutColor = (spoon.config.modeColors or {})[layout] or config.activeColor
+    local font = { name = ".AppleSystemUIFont", size = 20 }
 
     local styledText = hs.styledtext.new("")
-
-    for i = 1, 9 do
-        local windowCount = wm:getWindowCount(i)
-        local isCurrent = (i == current)
-        local hasWindows = (windowCount > 0)
-
+    for i = 1, tags.COUNT do
+        local bit = tags.bit(i)
         local color, text
-        if isCurrent then
-            -- Current workspace uses layout color
-            color = layoutColor
-            text = filledNumbers[i]
-        elseif hasWindows then
-            color = config.hasWindowsColor
-            text = solidNumbers[i]
+        if view & bit ~= 0 then
+            color, text = layoutColor, FILLED[i]
+        elseif occupied & bit ~= 0 then
+            color, text = config.hasWindowsColor, SOLID[i]
         else
-            color = config.inactiveColor
-            text = emptyNumbers[i]
+            color, text = config.inactiveColor, EMPTY[i]
         end
 
-        local segment = hs.styledtext.new(text, {
-            color = color,
-            font = { name = ".AppleSystemUIFont", size = 20 },
-        })
-
-        styledText = styledText .. segment
-
-        -- Add small space between numbers (except last)
-        if i < 9 then
-            styledText = styledText .. hs.styledtext.new(" ", {
-                font = { size = 6 },
-            })
+        styledText = styledText .. hs.styledtext.new(text, { color = color, font = font })
+        if i < tags.COUNT then
+            styledText = styledText .. hs.styledtext.new(" ", { font = { size = 6 } })
         end
     end
 
-    -- Add layout name with layout color
     if layout then
-        local layoutNames = {
-            tile = "Tile",
-            stack = "Stack",
-            scroll = "Scroll"
-        }
-        local layoutName = layoutNames[layout] or layout
-
-        -- Dim if tiling is off
-        local displayColor = tilingEnabled and layoutColor or { red = 0.5, green = 0.5, blue = 0.5, alpha = 0.5 }
-        local tilingIndicator = tilingEnabled and "" or " ○"
-
-        local layoutText = hs.styledtext.new(" │ " .. layoutName .. tilingIndicator, {
-            color = displayColor,
-            font = { name = ".AppleSystemUIFont", size = 16 },
-        })
-
-        styledText = styledText .. layoutText
+        local displayColor = tilingEnabled and layoutColor or DIMMED
+        styledText = styledText .. hs.styledtext.new(
+            " │ " .. (LAYOUT_NAMES[layout] or layout) .. (tilingEnabled and "" or " ○"),
+            { color = displayColor, font = { name = ".AppleSystemUIFont", size = 16 } })
     end
 
     self.menubarItem:setTitle(styledText)

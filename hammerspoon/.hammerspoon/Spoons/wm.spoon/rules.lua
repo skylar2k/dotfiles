@@ -1,10 +1,10 @@
 -- WM Rules
--- Decides how every window is managed: tiled, floating or ignored (plus optional workspace/geometry).
+-- Decides how every window is managed: tiled, floating or ignored (plus optional tags/geometry).
 --
 -- A rule is a table of matchers and actions:
 --
 --   { app_name = "Finder", action = "float" }
---   { app_id = "com.google.*", workspace = 2 }
+--   { app_id = "com.google.*", tags = 2 }
 --   { title = "*Preferences*", action = "float" }
 --   { app_id = "com.apple.finder", title = "Copy*", action = "float", dimensions = { 500, 200 }, center = true }
 --
@@ -16,13 +16,15 @@
 --
 -- Actions:
 --   action     = "float" | "tile" | "ignore"   (ignore: never managed, e.g. popups)
---   workspace  = 1..9                          (send new windows to this workspace)
+--   tags       = 1..9 | { 1, 3 }               (tags new windows get; default: the tags in view)
 --   dimensions = { width, height }             (floating windows only)
 --   position   = { x, y }                      (floating windows only)
 --   center     = true                          (floating windows only)
 --
 -- Every matching rule is applied in order and later rules override earlier ones, so user rules
 -- (which come after the defaults) can override any default.
+
+local Tags = dofile(hs.spoons.resourcePath("tags.lua"))
 
 local Rules = {}
 Rules.__index = Rules
@@ -39,7 +41,7 @@ local BUTTON_ORDER = { "fullscreen_button", "close_button", "minimize_button", "
 local BUTTON_STATES = { exists = true, none = true, enabled = true, disabled = true }
 local ACTIONS = { float = true, tile = true, ignore = true }
 
-local KNOWN_KEYS = { action = true, workspace = true, dimensions = true, position = true, center = true }
+local KNOWN_KEYS = { action = true, tags = true, dimensions = true, position = true, center = true }
 for _, k in ipairs(TEXT_MATCHERS) do KNOWN_KEYS[k] = true end
 for k in pairs(BUTTON_MATCHERS) do KNOWN_KEYS[k] = true end
 
@@ -188,8 +190,9 @@ local function compileRule(rule, label)
     if rule.action ~= nil and not ACTIONS[rule.action] then
         return nil, label .. ": action must be float, tile or ignore"
     end
-    if rule.workspace ~= nil and not (type(rule.workspace) == "number" and rule.workspace >= 1 and rule.workspace <= 9) then
-        return nil, label .. ": workspace must be 1-9"
+    if rule.tags ~= nil then
+        compiled.tagMask = Tags.toMask(rule.tags)
+        if not compiled.tagMask then return nil, label .. ": tags must be 1-9 or a list of them" end
     end
     for _, key in ipairs({ "dimensions", "position" }) do
         local v = rule[key]
@@ -253,7 +256,7 @@ function Rules:getRules()
 end
 
 --- Decide how a window is managed.
---- Returns { manage = "tile"|"float"|"ignore", workspace, dimensions, position, center, rule = label }
+--- Returns { manage = "tile"|"float"|"ignore", tags (bitmask), dimensions, position, center, rule = label }
 function Rules:classify(win)
     local result = { manage = "tile" }
 
@@ -268,7 +271,7 @@ function Rules:classify(win)
         if ruleMatches(compiled, facts) then
             local rule = compiled.source
             if rule.action then result.manage = rule.action end
-            if rule.workspace then result.workspace = rule.workspace end
+            if compiled.tagMask then result.tags = compiled.tagMask end
             if rule.dimensions then result.dimensions = rule.dimensions end
             if rule.position then result.position = rule.position end
             if rule.center then result.center = true end

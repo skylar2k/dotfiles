@@ -6,47 +6,46 @@ function API:new(spoon)
     return setmetatable({ spoon = spoon }, self)
 end
 
+--------------------------------------------------------------------------------
+-- Layout commands
+--------------------------------------------------------------------------------
+
 function API:cycleLayout()
-    local current = self.spoon:getLayoutForCurrentSpace()
-    local newIndex = (current % #self.spoon.layouts) + 1
-    self.spoon:setLayoutForCurrentSpace(newIndex)
-    self.spoon.core:showAlert("Layout: " .. self.spoon.layouts[newIndex]:upper())
-    self.spoon.state.layoutChanged = true
-    self.spoon:updateLayout()
-    -- Update menubar immediately
-    if self.spoon.menubar then self.spoon.menubar:update() end
+    local spoon = self.spoon
+    local newIndex = (spoon:getLayoutIndex() % #spoon.layouts) + 1
+    spoon:setLayoutIndex(newIndex)
+    spoon.core:showAlert("Layout: " .. spoon.layouts[newIndex]:upper())
+    spoon:updateLayout()
+    if spoon.menubar then spoon.menubar:update() end
 end
 
 function API:chooseLayout()
+    local spoon = self.spoon
     local choices = {}
-    for i, name in ipairs(self.spoon.layouts) do
+    for i, name in ipairs(spoon.layouts) do
         table.insert(choices, {
             text = name:upper(),
-            subText = name == self.spoon:getCurrentLayoutName() and "Current" or "",
+            subText = name == spoon:getCurrentLayoutName() and "Current" or "",
             index = i
         })
     end
 
-    local spoon = self.spoon
     hs.chooser.new(function(choice)
         if choice then
-            spoon:setLayoutForCurrentSpace(choice.index)
-            spoon.state.layoutChanged = true
+            spoon:setLayoutIndex(choice.index)
             spoon:updateLayout()
-            -- Update menubar immediately
             if spoon.menubar then spoon.menubar:update() end
         end
     end):choices(choices):show()
 end
 
-function API:togglePerSpaceLayouts()
-    self.spoon.config.usePerSpaceLayouts = not self.spoon.config.usePerSpaceLayouts
-    self.spoon.core:showAlert("Per-space layouts: " .. (self.spoon.config.usePerSpaceLayouts and "ON" or "OFF"))
-    self.spoon:saveSettings()
-end
+--------------------------------------------------------------------------------
+-- Hotkeys
+--------------------------------------------------------------------------------
 
 function API:bindHotkeys(mapping)
     local core, spoon = self.spoon.core, self.spoon
+    local tags = spoon.tags
 
     local def = {
         -- Unified window focus (works in all layouts)
@@ -60,10 +59,9 @@ function API:bindHotkeys(mapping)
         -- Toggle tiling on/off (replaces floating layout)
         toggleTiling = function() core:toggleTiling() end,
 
-        -- Layout management
+        -- Layout management (layouts are per tag, like dwm's pertag)
         cycleLayout = function() self:cycleLayout() end,
         chooseLayout = function() self:chooseLayout() end,
-        togglePerSpaceLayouts = function() self:togglePerSpaceLayouts() end,
 
         -- Unified resize (tiling: column/row, scroll: scroll)
         resizeLeft = function() core:resizeFocusedWindow("left") end,
@@ -108,107 +106,146 @@ function API:bindHotkeys(mapping)
         -- Scroll-specific commands
         scrollLeft = function() core:scrollLeft() end,
         scrollRight = function() core:scrollRight() end,
+
+        -- Tags, as in dwm
+        viewAllTags = function() self:viewTags(tags.ALL) end,
+        viewPreviousTags = function() self:viewTags(0) end,
+        tagWindowAll = function() self:tagWindow(tags.ALL) end,
     }
 
-    -- Generate position functions dynamically
     for i = 1, 6 do
         def["moveToPosition" .. i] = function() core:moveToPosition(i) end
     end
 
-    -- Generate workspace functions dynamically (1-9)
-    for i = 1, 9 do
-        def["focusWorkspace" .. i] = function() self:focusWorkspace(i) end
-        def["moveToWorkspace" .. i] = function() self:moveToWorkspace(i, true) end      -- Follow by default
-        def["moveToWorkspaceStay" .. i] = function() self:moveToWorkspace(i, false) end -- Stay in current workspace
+    for i = 1, tags.COUNT do
+        local bit = tags.bit(i)
+        def["viewTag" .. i] = function() self:viewTags(bit) end                    -- dwm view
+        def["toggleViewTag" .. i] = function() self:toggleViewTags(bit) end        -- dwm toggleview
+        def["tagWindow" .. i] = function() self:tagWindow(bit) end                 -- dwm tag
+        def["toggleWindowTag" .. i] = function() self:toggleWindowTag(bit) end     -- dwm toggletag
+        def["tagWindowAndView" .. i] = function() self:tagWindow(bit, true) end    -- tag, then follow
     end
 
     hs.spoons.bindHotkeysToSpec(def, mapping)
     return spoon
 end
 
--- Workspace management
-function API:focusWorkspace(id, silent)
-    local wm = self.spoon.workspaceManager
-    if not wm then
-        self.spoon.core:showAlert("No workspace manager")
-        return
-    end
+--------------------------------------------------------------------------------
+-- Tag commands
+--------------------------------------------------------------------------------
 
-    if wm.current == id then
-        local count = wm:getWindowCount(id) or 0
-        self.spoon.core:showAlert("Workspace " .. id .. " (" .. count .. " windows)")
-        return
+-- "Tag 2 (3 windows)" / "Tags 1+2 (5 windows)"
+function API:describeView()
+    local tags = self.spoon.tags
+    local list = tags.list(tags:viewMask())
+    local label
+    if #list == tags.COUNT then
+        label = "All tags"
+    else
+        label = (#list == 1 and "Tag " or "Tags ") .. table.concat(list, "+")
     end
+    return string.format("%s (%d windows)", label, tags:count())
+end
 
-    -- Set flag to ignore focus events during workspace switch
-    self.spoon.state.switchingWorkspace = true
-    -- Focus events caused by the switch itself must not trigger another switch
-    local success = wm:switchToWorkspace(id)
-    if success then
-        local count = wm:getWindowCount() or 0
-        if not silent then self.spoon.core:showAlert("Workspace " .. id .. " (" .. count .. " windows)") end
-        -- Don't call updateLayout here - switchToWorkspace already restores window frames
-        -- Just sync the window list for the new workspace
-        local windows = wm:getWindowsForLayout()
-        self.spoon.state.windows = windows
-        self.spoon.ui:updateAll()
-        if self.spoon.menubar then self.spoon.menubar:update() end
-        self.spoon:saveSettings()
-    end
-    -- Clear flag after windows have settled (prevents windowMoved from triggering retile)
+--- Re-apply the view after it (or a window's tags) changed: park what left, show what arrived,
+--- retile, and hand focus to a window in view
+function API:refreshView()
+    local spoon = self.spoon
+    local tags = spoon.tags
+
+    -- Moves and focus changes caused by this are ours, not the user's
+    spoon.state.viewChanging = true
+
+    tags:applyVisibility()
+    spoon:updateLayout()
+    tags:focusCurrent()
+    spoon.ui:updateAll()
+    if spoon.menubar then spoon.menubar:update() end
+
     hs.timer.doAfter(0.2, function()
-        self.spoon.state.switchingWorkspace = false
+        spoon.state.viewChanging = false
+        -- A window event that arrived mid-change asked for a layout: do it now
+        if spoon.state.layoutDeferred then
+            spoon.state.layoutDeferred = false
+            spoon:updateLayout()
+            if spoon.menubar then spoon.menubar:update() end
+        end
     end)
 end
 
-function API:moveToWorkspace(id, follow)
-    local wm = self.spoon.workspaceManager
-    if not wm then
-        self.spoon.core:showAlert("No workspace manager")
-        return
+--- dwm view: show exactly these tags (0 = previous view). `silent` skips the alert.
+function API:viewTags(mask, silent)
+    local spoon = self.spoon
+    if not spoon.tags:view(mask) then
+        if not silent then spoon.core:showAlert(self:describeView()) end
+        return false
     end
 
-    local win = hs.window.focusedWindow()
-    if not win then
-        self.spoon.core:showAlert("No focused window")
-        return
-    end
-
-    -- Set flag to prevent focus events from switching workspace back
-    if follow then
-        self.spoon.state.switchingWorkspace = true
-    end
-
-    local success = wm:moveWindowToWorkspace(win, id, follow)
-    if success then
-        if follow then
-            self.spoon.core:showAlert("Workspace " .. id)
-        else
-            self.spoon.core:showAlert("Moved to workspace " .. id)
-            -- Only update layout here if NOT following (follow already updates inside moveWindowToWorkspace)
-            self.spoon:updateLayout(true)
-        end
-        if self.spoon.menubar then self.spoon.menubar:update() end
-        self.spoon.ui:updateAll()
-        self.spoon:saveSettings()
-    end
-
-    -- Clear flag after windows have settled
-    if follow then
-        hs.timer.doAfter(0.2, function()
-            self.spoon.state.switchingWorkspace = false
-        end)
-    end
+    spoon.helpers:log("debug", "view -> " .. self:describeView())
+    self:refreshView()
+    if not silent then spoon.core:showAlert(self:describeView()) end
+    return true
 end
+
+--- dwm toggleview: add or remove tags from the view
+function API:toggleViewTags(mask)
+    local spoon = self.spoon
+    if not spoon.tags:toggleView(mask) then return false end
+
+    self:refreshView()
+    spoon.core:showAlert(self:describeView())
+    return true
+end
+
+--- dwm tag: put the focused window on these tags. With `follow` the view moves along (tag, then view).
+function API:tagWindow(mask, follow)
+    local spoon = self.spoon
+    local win, winId = spoon.core:getFocusedWindow()
+    if not win or not spoon.tags:getClient(winId) then
+        spoon.core:showAlert("No managed window focused")
+        return false
+    end
+
+    spoon.tags:setWindowTags(winId, mask)
+    if follow then spoon.tags:view(mask) end
+    self:refreshView()
+    spoon.core:showAlert(follow and self:describeView() or ("Window -> " .. self:describeTags(winId)))
+    return true
+end
+
+--- dwm toggletag: add or remove tags on the focused window
+function API:toggleWindowTag(mask)
+    local spoon = self.spoon
+    local win, winId = spoon.core:getFocusedWindow()
+    if not win or not spoon.tags:getClient(winId) then
+        spoon.core:showAlert("No managed window focused")
+        return false
+    end
+
+    if not spoon.tags:toggleWindowTag(winId, mask) then return false end
+    self:refreshView()
+    spoon.core:showAlert("Window -> " .. self:describeTags(winId))
+    return true
+end
+
+function API:describeTags(winId)
+    local tags = self.spoon.tags
+    local c = tags:getClient(winId)
+    local list = c and tags.list(c.tags) or {}
+    return (#list == tags.COUNT) and "all tags" or ("tag " .. table.concat(list, "+"))
+end
+
+--------------------------------------------------------------------------------
+-- Start / stop
+--------------------------------------------------------------------------------
 
 function API:start()
     local spoon = self.spoon
-    local wm = spoon.workspaceManager
+    local tags = spoon.tags
 
     -- Starting twice would double every subscription; tear down the previous run first
     if self.started then self:stop() end
     self.started = true
-    self.subscriptions = {}
 
     -- hs.window.filter.default silently drops whole categories of apps before we ever see them.
     -- Use our own filter instead: every visible window of a role we can manage gets through, and
@@ -219,51 +256,48 @@ function API:start()
         allowRoles = { "AXStandardWindow", "AXDialog", "AXSystemDialog", "AXFloatingWindow" },
     })
     self.windowFilter = windowFilter
-    local function subscribe(event, fn)
-        windowFilter:subscribe(event, fn)
-        table.insert(self.subscriptions, { event = event, fn = fn })
-    end
+    local function subscribe(event, fn) windowFilter:subscribe(event, fn) end
 
-    -- Start menubar
     if spoon.menubar then spoon.menubar:start() end
 
-    local updateLayout = function(source)
-        -- Skip during workspace switching or if explicitly ignored
-        if spoon.state.switchingWorkspace or spoon.state.ignoreNextUpdate then
-            if spoon.config.debug then
-                print("[WM] updateLayout skipped (switching=" ..
-                    tostring(spoon.state.switchingWorkspace) .. ") source=" .. (source or "unknown"))
-            end
+    -- Layout requests coalesce: a burst of window events costs one layout pass
+    local layoutPending = false
+    local function scheduleLayout(source)
+        if spoon.state.viewChanging then
+            spoon.state.layoutDeferred = true
             return
         end
-        if spoon.config.debug then print("[WM] updateLayout called from " .. (source or "unknown")) end
+        if layoutPending then return end
+        layoutPending = true
         hs.timer.doAfter(spoon.config.timing.layoutUpdateDelay, function()
-            -- Double-check flags after delay
-            if not spoon.state.switchingWorkspace and not spoon.state.ignoreNextUpdate then
-                spoon:updateLayout(false)
-                if spoon.menubar then spoon.menubar:update() end
+            layoutPending = false
+            if spoon.state.viewChanging then
+                spoon.state.layoutDeferred = true
+                return
             end
+            spoon.helpers:log("debug", "layout pass (" .. tostring(source) .. ")")
+            spoon:updateLayout()
+            if spoon.menubar then spoon.menubar:update() end
         end)
     end
 
-    -- Restore workspace assignments from the last session BEFORE subscribing to the window
-    -- filter, otherwise existing windows get re-added to the current workspace
-    if wm and spoon.state.pendingWorkspaces then
-        wm:restore(spoon.state.pendingWorkspaces)
-    end
-    spoon.state.pendingWorkspaces = nil
+    -- Restore the last session BEFORE subscribing to the window filter, otherwise existing windows
+    -- get registered again as new ones
+    if spoon.state.pendingTags then tags:restore(spoon.state.pendingTags) end
+    spoon.state.pendingTags = nil
 
-    -- Apply the rules to a window: track it (tiled or floating), move it to a workspace, or ignore it.
+    -- Apply the rules to a window: track it (tiled or floating, on its tags) or ignore it.
     -- Also used to re-check shortly after creation, when title/subrole/buttons often aren't final yet.
     local function processWindow(win, isRecheck)
         local winId = spoon.helpers:getWindowId(win)
-        if not winId or not wm then return end
+        if not winId then return end
 
         -- A float/tile choice made by hand always wins over rules
-        if isRecheck and wm:isManuallyFloated(winId) then return end
+        if isRecheck and tags:isManuallyFloated(winId) then return end
 
         local result = spoon.rules:classify(win)
-        local before = wm.windowToWorkspace[winId] and (spoon.state.floatingWindows[winId] and "float" or "tile") or "ignore"
+        local client = tags:getClient(winId)
+        local before = client and (client.floating and "float" or "tile") or "ignore"
         if spoon.config.debug and (not isRecheck or before ~= result.manage) then
             -- Only cheap lookups here: describe() would query the accessibility tree for every window
             local appOk, appName = pcall(function() return win:application():name() end)
@@ -274,33 +308,29 @@ function API:start()
                 result.manage, tostring(result.rule or "no rule"), isRecheck and " [recheck]" or ""))
         end
 
-        local tracked = wm.windowToWorkspace[winId]
-
         if result.manage == "ignore" then
-            if tracked then
-                wm:removeWindow(winId)
-                spoon.state.floatingWindows[winId] = nil
-                updateLayout("windowIgnored")
+            if client then
+                tags:remove(winId)
+                scheduleLayout("windowIgnored")
             end
             return
         end
 
         local floating = result.manage == "float"
-        if not tracked then
-            if result.workspace and result.workspace ~= wm.current then
-                wm:addWindowToWorkspace(win, result.workspace, floating)
-            else
-                wm:addWindow(win, floating)
-            end
-        elseif (spoon.state.floatingWindows[winId] or false) ~= floating then
-            wm:setFloating(winId, floating)
+        if not client then
+            client = tags:register(win, result.tags, { floating = floating })
+            if not client then return end
+            -- A rule can send a window to tags that aren't in view: park it right away
+            if not tags:isVisible(client) then tags:hide(client) end
+        elseif client.floating ~= floating then
+            tags:setFloating(winId, floating)
         end
 
         -- Geometry only makes sense for floating windows; tiled ones are placed by the layout
         if floating and not isRecheck then
             local ok, frame = pcall(function() return win:frame() end)
             local screen = hs.screen.mainScreen()
-            if ok and frame and screen then
+            if ok and frame and screen and (result.dimensions or result.position or result.center) then
                 local new = { x = frame.x, y = frame.y, w = frame.w, h = frame.h }
                 if result.dimensions then new.w, new.h = result.dimensions[1], result.dimensions[2] end
                 if result.position then new.x, new.y = result.position[1], result.position[2] end
@@ -308,13 +338,11 @@ function API:start()
                     local sf = screen:frame()
                     new.x, new.y = sf.x + (sf.w - new.w) / 2, sf.y + (sf.h - new.h) / 2
                 end
-                if result.dimensions or result.position or result.center then
-                    pcall(function() win:setFrame(new) end)
-                end
+                pcall(win.setFrame, win, new)
             end
         end
 
-        updateLayout(isRecheck and "windowRecheck" or "windowCreated")
+        scheduleLayout(isRecheck and "windowRecheck" or "windowCreated")
     end
 
     subscribe(hs.window.filter.windowCreated, function(win)
@@ -324,68 +352,69 @@ function API:start()
         -- Titles, subroles and buttons are often not final at creation: look again once things settle
         local winId = spoon.helpers:getWindowId(win)
         hs.timer.doAfter(spoon.config.timing.ruleRecheckDelay or 0.4, function()
-            local live = winId and hs.window.get(winId)
-            if live then processWindow(live, true) end
+            if winId and spoon.helpers:getWindowId(win) == winId then processWindow(win, true) end
         end)
     end)
 
-    -- Window destroyed - remove from workspace
+    -- Window destroyed - forget it
     subscribe(hs.window.filter.windowDestroyed, function(win)
-        if win then
-            local winId = win:id()
-            if winId and wm then wm:removeWindow(winId) end
-            updateLayout("windowDestroyed")
+        local winId = win and spoon.helpers:getWindowId(win)
+        if winId then tags:remove(winId) else tags:prune() end
+        scheduleLayout("windowDestroyed")
 
-            -- Closing a window must leave you where you are. macOS re-activates the previously active
-            -- app, whose key window is usually parked in another workspace: don't follow that, and put
-            -- focus on something visible instead (the next window here, or the desktop if none is left).
-            spoon.state.windowClosedUntil = hs.timer.secondsSinceEpoch() + 0.6
-            hs.timer.doAfter(0.1, function()
-                local focusedId = spoon.helpers:getWindowId(hs.window.focusedWindow())
-                local focusedWs = focusedId and wm.windowToWorkspace[focusedId]
-                if focusedWs and focusedWs ~= wm.current then wm:focusCurrentWorkspace() end
-            end)
-        end
+        -- Closing a window must leave you where you are. macOS re-activates the previously active
+        -- app, whose key window is usually parked on tags that aren't in view: don't follow that, and
+        -- put focus on something visible instead (the next window here, or the desktop if none is left).
+        spoon.state.windowClosedUntil = hs.timer.secondsSinceEpoch() + 0.6
+        hs.timer.doAfter(0.1, function()
+            local focused = tags:getClient(spoon.helpers:getWindowId(hs.window.focusedWindow()))
+            if focused and not tags:isVisible(focused) then tags:focusCurrent() end
+        end)
     end)
 
     -- Window minimized/unminimized
     subscribe(hs.window.filter.windowMinimized, function(win)
-        -- Set flag to prevent workspace switch when minimizing causes focus change
+        -- Minimizing moves focus: don't read that as a request to change the view
         spoon.state.justMinimized = true
-        hs.timer.doAfter(0.15, function()
-            spoon.state.justMinimized = false
-        end)
-        updateLayout("windowMinimized")
+        hs.timer.doAfter(0.15, function() spoon.state.justMinimized = false end)
+        tags:setMinimized(spoon.helpers:getWindowId(win), true)
+        scheduleLayout("windowMinimized")
     end)
 
-    subscribe(hs.window.filter.windowUnminimized, function() updateLayout("windowUnminimized") end)
-    subscribe(hs.window.filter.windowsChanged, function() updateLayout("windowsChanged") end)
+    subscribe(hs.window.filter.windowUnminimized, function(win)
+        local winId = spoon.helpers:getWindowId(win)
+        tags:setMinimized(winId, false)
+        local c = tags:getClient(winId)
+        if c and not tags:isVisible(c) then tags:hide(c) end -- Restored on tags that aren't in view
+        scheduleLayout("windowUnminimized")
+    end)
 
     local lastFocusedWinId = nil
     local lastFocusTime = 0
     subscribe(hs.window.filter.windowFocused, function(win)
-        if not win then return end
         local winId = spoon.helpers:getWindowId(win)
-        if not winId then return end
+        local client = tags:getClient(winId)
+        if not client then return end -- Ignored windows are none of our business
 
         -- The filter reports the already-focused window when it starts: that is not a user action
         if not spoon.state.ready then return end
         if hs.timer.secondsSinceEpoch() < (spoon.state.windowClosedUntil or 0) then return end
 
-        -- Skip focus handling during workspace switching or right after minimize
-        if spoon.state.switchingWorkspace or spoon.state.justMinimized or spoon.state.rotatingStack then return end
+        -- Skip focus handling during view changes, right after minimize and while the stack rotates
+        if spoon.state.viewChanging or spoon.state.justMinimized or spoon.state.rotatingStack then return end
 
-        -- Focusing a window that lives in another workspace (Dock click, Cmd+Tab) switches to it.
-        -- This must come before the de-duplication below, or re-focusing the same window never switches.
-        local targetWs = wm and wm.windowToWorkspace[winId]
-        if targetWs and targetWs ~= wm.current then
-            wm.workspaces[targetWs].focused = winId -- Land on the window the user asked for
-            self:focusWorkspace(targetWs, true) -- Silent: this isn't a keypress, so no alert
+        -- Focusing a window that is not in view (Dock click, Cmd+Tab, Spotlight) shows its tags, like
+        -- dwm's focusonnetactive. Silent: this isn't a keypress, so no alert.
+        if not tags:isVisible(client) then
+            spoon.helpers:log("debug", string.format("focus: window %d is on tags %s, viewing them",
+                winId, table.concat(tags.list(client.tags), "+")))
+            tags:noteFocus(winId) -- Land on the window the user asked for
+            self:viewTags(client.tags, true)
             lastFocusedWinId = winId
             return
         end
 
-        if targetWs == wm.current then wm:getCurrentWorkspace().focused = winId end
+        tags:noteFocus(winId)
 
         -- Prevent focus loop: skip if same window focused again
         if winId == lastFocusedWinId then return end
@@ -397,33 +426,28 @@ function API:start()
         lastFocusedWinId = winId
 
         -- For Scroll: scroll to show the focused window's column
-        local layoutsModule = spoon.layoutsModule
-        if layoutsModule and spoon:getCurrentLayoutName() == "scroll" then
-            local colIdx = layoutsModule:scrollFindWindow(winId)
+        local layouts = spoon.layoutsModule
+        if layouts and spoon:getCurrentLayoutName() == "scroll" then
+            local colIdx = layouts:scrollFindWindow(winId)
             -- Only update if offset actually changed to prevent focus loops
-            if colIdx and layoutsModule.scrollViewOffset ~= colIdx - 1 then
-                layoutsModule.scrollViewOffset = colIdx - 1
-                spoon:updateLayout(true)
+            if colIdx and layouts.scrollViewOffset ~= colIdx - 1 then
+                layouts.scrollViewOffset = colIdx - 1
+                spoon:updateLayout()
             end
         end
 
-        pcall(function() win:raise() end)
+        pcall(win.raise, win)
         spoon.ui:updateAll()
     end)
 
     subscribe(hs.window.filter.windowMoved, function(win)
-        if win then
-            local winId = win:id()
-            -- Skip during workspace switching to prevent re-tiling restored windows
-            if spoon.state.switchingWorkspace then return end
-            if winId and not (spoon.state.floatingWindows[winId] or spoon.state.ignoreNextUpdate) then
-                hs.timer.doAfter(spoon.config.timing.layoutUpdateDelay, function()
-                    -- Double-check we're not still switching
-                    if not spoon.state.switchingWorkspace then
-                        spoon:updateLayout(true)
-                    end
-                end)
-            end
+        -- Our own layout and view changes move windows too: only react to the user moving a tiled window
+        if spoon.state.viewChanging or spoon.state.dragging then return end
+        if hs.timer.secondsSinceEpoch() - (spoon.state.layoutAppliedAt or 0) < 0.25 then return end
+
+        local c = tags:getClient(spoon.helpers:getWindowId(win))
+        if c and not c.floating and not c.parked and tags:isVisible(c) then
+            scheduleLayout("windowMoved")
         end
     end)
 
@@ -437,12 +461,11 @@ function API:start()
         if not dragWin then
             dragWin = hs.window.focusedWindow()
             dragStartFrame = dragWin and dragWin:frame() or nil
-            if dragWin and spoon.state.windows then
-                -- Store original frames of all windows
-                originalFrames = {}
-                for i, w in ipairs(spoon.state.windows) do
-                    originalFrames[w:id()] = w:frame()
-                end
+            spoon.state.dragging = dragWin ~= nil
+            originalFrames = {}
+            -- Original frames of all tiled windows: the drop target is found in these
+            for _, w in ipairs(spoon.state.windows) do
+                originalFrames[w:id()] = w:frame()
             end
         end
         return false
@@ -451,118 +474,67 @@ function API:start()
     spoon.dragEndTap = hs.eventtap.new({ hs.eventtap.event.types.leftMouseUp }, function(e)
         -- Only treat as a window drag if the window itself moved. Drags inside an
         -- app (text selection, scrollbars, sliders) must never trigger a swap.
-        local windowMoved = false
+        local moved = false
         if dragWin and dragStartFrame then
             local ok, cur = pcall(function() return dragWin:frame() end)
             if ok and cur then
-                windowMoved = math.abs(cur.x - dragStartFrame.x) > DRAG_MOVE_THRESHOLD
+                moved = math.abs(cur.x - dragStartFrame.x) > DRAG_MOVE_THRESHOLD
                     or math.abs(cur.y - dragStartFrame.y) > DRAG_MOVE_THRESHOLD
             end
         end
 
-        if windowMoved and dragWin and spoon.state.windows then
+        if moved then
             local winId = dragWin:id()
-            if winId and not spoon.state.floatingWindows[winId] then
-                local mousePos = hs.mouse.absolutePosition()
-
-                -- Find window under mouse position (using original frames)
-                for i, otherWin in ipairs(spoon.state.windows) do
-                    if otherWin:id() ~= winId then
-                        local origFrame = originalFrames[otherWin:id()]
-                        if origFrame and
-                            mousePos.x >= origFrame.x and mousePos.x <= origFrame.x + origFrame.w and
-                            mousePos.y >= origFrame.y and mousePos.y <= origFrame.y + origFrame.h then
-                            -- Found target - swap
-                            local srcIdx
-                            for j, w in ipairs(spoon.state.windows) do
-                                if w:id() == winId then
-                                    srcIdx = j; break
-                                end
-                            end
-                            if srcIdx and srcIdx ~= i then
-                                spoon.state.ignoreNextUpdate = true
-                                spoon.state.windows[srcIdx], spoon.state.windows[i] =
-                                    spoon.state.windows[i], spoon.state.windows[srcIdx]
-
-                                -- For Scroll/Tile, swap in column structures
-                                local layout = spoon:getCurrentLayoutName()
-                                if spoon.layoutsModule then
-                                    if layout == "scroll" then
-                                        local cols = spoon.layoutsModule.scrollColumns
-                                        if cols and srcIdx <= #cols and i <= #cols then
-                                            cols[srcIdx], cols[i] = cols[i], cols[srcIdx]
-                                        end
-                                    elseif layout == "tile" then
-                                        -- Swap windows in tileColumns structure
-                                        local cols = spoon.layoutsModule.tileColumns
-                                        if cols then
-                                            -- Find which columns contain these windows
-                                            local srcWinId, targetWinId = winId, otherWin:id()
-                                            local srcColIdx, srcRowIdx, targetColIdx, targetRowIdx
-
-                                            for colIdx, col in ipairs(cols) do
-                                                for rowIdx, wId in ipairs(col.windows) do
-                                                    if wId == srcWinId then
-                                                        srcColIdx, srcRowIdx = colIdx, rowIdx
-                                                    elseif wId == targetWinId then
-                                                        targetColIdx, targetRowIdx = colIdx, rowIdx
-                                                    end
-                                                end
-                                            end
-
-                                            -- Swap in the column structure
-                                            if srcColIdx and targetColIdx then
-                                                cols[srcColIdx].windows[srcRowIdx] = targetWinId
-                                                cols[targetColIdx].windows[targetRowIdx] = srcWinId
-                                            end
-                                        end
-                                    end
-                                end
-
-                                spoon.core:showAlert("Swapped")
-                                hs.timer.doAfter(0.01, function()
-                                    spoon:updateLayout(true)
-                                    spoon.state.ignoreNextUpdate = false
-                                end)
-                            end
-                            break
-                        end
+            local mousePos = hs.mouse.absolutePosition()
+            local windows = spoon.state.windows
+            local srcIdx, dstIdx
+            for i, w in ipairs(windows) do
+                local id = w:id()
+                if id == winId then
+                    srcIdx = i
+                elseif not dstIdx then
+                    local f = originalFrames[id]
+                    if f and mousePos.x >= f.x and mousePos.x <= f.x + f.w
+                        and mousePos.y >= f.y and mousePos.y <= f.y + f.h then
+                        dstIdx = i
                     end
                 end
             end
+
+            if srcIdx and dstIdx and not tags:isFloating(winId) then
+                spoon.core:swapIndices(srcIdx, dstIdx)
+                spoon.core:showAlert("Swapped")
+                spoon.core:updateLayout()
+            else
+                scheduleLayout("dragEnd") -- Dropped nowhere useful: snap back
+            end
         end
-        dragWin = nil
-        dragStartFrame = nil
-        originalFrames = {}
+
+        spoon.state.dragging = false
+        dragWin, dragStartFrame, originalFrames = nil, nil, {}
         return false
     end)
 
     spoon.dragTap:start()
     spoon.dragEndTap:start()
 
-    -- Space change watcher
+    -- macOS Space changes can move windows around
     self.spaceWatcher = hs.spaces.watcher.new(function()
-        hs.timer.doAfter(spoon.config.timing.spaceChangeDelay, function()
-            spoon.state.layoutChanged = true
-            spoon:updateLayout()
-        end)
+        hs.timer.doAfter(spoon.config.timing.spaceChangeDelay, function() scheduleLayout("spaceChanged") end)
     end):start()
 
     -- Initial setup
     hs.timer.doAfter(spoon.config.timing.initialSetupDelay, function()
-        -- Sync existing windows to workspace 1
-        if wm then wm:syncExistingWindows() end
+        tags:syncExisting() -- Windows we didn't restore join the tags in view
 
         spoon.state.ready = true -- From here on, settings may be written and focus changes are followed
-        spoon.state.layoutChanged = true
         spoon:updateLayout()
         if spoon.menubar then spoon.menubar:update() end
 
-        -- After a reload the focused window can be one parked in another workspace (it kept key status
-        -- while hidden): hand focus to the workspace we are actually showing
-        local focusedId = spoon.helpers:getWindowId(hs.window.focusedWindow())
-        local focusedWs = focusedId and wm.windowToWorkspace[focusedId]
-        if focusedWs and focusedWs ~= wm.current then wm:focusCurrentWorkspace() end
+        -- After a reload the focused window can be one parked on tags that aren't in view (it kept
+        -- key status while hidden): hand focus to a window we are actually showing
+        local focused = tags:getClient(spoon.helpers:getWindowId(hs.window.focusedWindow()))
+        if focused and not tags:isVisible(focused) then tags:focusCurrent() end
 
         spoon.core:showAlert("WindowManager+ Ready")
     end)
@@ -655,27 +627,20 @@ function API:configure(config)
     return self.spoon
 end
 
--- Force retile: rebuild every column structure and re-scan windows. Workspace assignments are kept.
+-- Force retile: rebuild every column structure and re-scan windows. Tags are kept.
 function API:forceRetile()
     local spoon = self.spoon
-    local wm = spoon.workspaceManager
+    local tags = spoon.tags
 
-    spoon.state.windows = {}
-
-    if wm then
-        wm:rescan() -- Drop dead windows, adopt unknown ones into the current workspace
-        for i = 1, wm.WORKSPACE_COUNT do
-            local ws = wm.workspaces[i]
-            ws.tileColumns, ws.scrollColumns, ws.scrollViewOffset = {}, {}, 0
-        end
+    tags:rescan() -- Drop dead windows, adopt unknown ones into the tags in view
+    for i = 0, tags.COUNT do
+        local st = tags.pertag[i]
+        st.tileColumns, st.scrollColumns, st.scrollViewOffset = {}, {}, 0
     end
-    if spoon.layoutsModule then
-        spoon.layoutsModule.tileColumns, spoon.layoutsModule.scrollColumns = {}, {}
-        spoon.layoutsModule.scrollViewOffset = 0
-    end
+    tags:loadLive()
 
-    spoon.state.layoutChanged = true
-    spoon:updateLayout(false)
+    tags:applyVisibility()
+    spoon:updateLayout()
     if spoon.menubar then spoon.menubar:update() end
     spoon.core:showAlert("Retiled")
 
@@ -685,8 +650,6 @@ end
 -- Stop everything start() set up. Safe to call more than once.
 function API:stop()
     local spoon = self.spoon
-
-    self.subscriptions = {}
 
     if self.windowFilter then
         pcall(function() self.windowFilter:unsubscribeAll() end)
