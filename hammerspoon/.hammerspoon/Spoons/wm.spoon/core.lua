@@ -600,12 +600,31 @@ function Core:floatingWindowNextScreen()
 end
 
 -- Scroll Controls
+
+-- Focus follows the viewport: after scrolling, the most recently used window of the new center column
+-- gets focus (otherwise focus would stay on a window that is now in a side column, or off screen)
+function Core:focusScrollCenter()
+    local layouts, tags = self.spoon.layoutsModule, self.spoon.tags
+    local column = layouts.scrollColumns[layouts.scrollViewOffset + 1]
+    if not column then return end
+
+    local best
+    for _, id in ipairs(column) do
+        local client = tags:getClient(id)
+        if client and (not best or client.focusSeq > best.focusSeq) then best = client end
+    end
+    if best then
+        tags:noteFocus(best.id)
+        pcall(best.win.focus, best.win)
+    end
+end
+
 function Core:scrollLeft()
     if self.spoon:getCurrentLayoutName() ~= "scroll" then
         self:showAlert("Scroll only"); return
     end
     if self.spoon.layoutsModule and self.spoon.layoutsModule:scrollLeft() then
-        self:updateLayout(); self:showAlert("← Scroll")
+        self:updateLayout(); self:focusScrollCenter(); self:showAlert("← Scroll")
     else
         self:showAlert("At start")
     end
@@ -616,7 +635,7 @@ function Core:scrollRight()
         self:showAlert("Scroll only"); return
     end
     if self.spoon.layoutsModule and self.spoon.layoutsModule:scrollRight() then
-        self:updateLayout(); self:showAlert("Scroll →")
+        self:updateLayout(); self:focusScrollCenter(); self:showAlert("Scroll →")
     else
         self:showAlert("At end")
     end
