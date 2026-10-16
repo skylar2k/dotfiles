@@ -384,28 +384,108 @@ function WorkspaceManager:getWindowCount(wsId)
     return count
 end
 
---- Sync existing windows to workspace 1 on startup
-function WorkspaceManager:syncExistingWindows()
-    local allWindows = hs.window.allWindows()
+local function plainFrame(f)
+    if type(f) ~= "table" then return nil end
+    local ok, x, y, w, h = pcall(function() return f.x, f.y, f.w, f.h end)
+    if not ok or not x or not y or not w or not h then return nil end
+    return { x = x, y = y, w = w, h = h }
+end
 
-    local addedCount = 0
-    for _, win in ipairs(allWindows) do
-        local isRelevant = self.spoon.helpers:isRelevantWindow(win)
-        local winId = win:id()
-        local title = win:title() or "untitled"
+--- Serialize workspace assignments so they survive a reload (window ids are stable across reloads)
+function WorkspaceManager:serialize()
+    local layoutsModule = self.spoon.layoutsModule
+    local data = { current = self.current, workspaces = {} }
 
-        if isRelevant then
-            if winId and not self.windowToWorkspace[winId] then
-                -- Add to workspace 1
-                local ws = self.workspaces[1]
-                local ok, frame = pcall(function() return win:frame() end)
-                ws.windows[winId] = {
-                    frame = ok and frame or nil,
-                    floating = self.spoon.state.floatingWindows[winId] or false
-                }
-                self.windowToWorkspace[winId] = 1
-                addedCount = addedCount + 1
+    for i = 1, 9 do
+        local ws = self.workspaces[i]
+        local windows = {}
+        for winId, winData in pairs(ws.windows) do
+            windows[tostring(winId)] = {
+                frame = plainFrame(winData.frame),
+                floating = winData.floating or false,
+            }
+        end
+
+        -- Live column state for the current workspace lives in the layouts module
+        local isCurrent = (i == self.current) and layoutsModule
+        data.workspaces[i] = {
+            layout = ws.layout,
+            focused = ws.focused,
+            windows = windows,
+            tileColumns = (isCurrent and layoutsModule.tileColumns or ws.tileColumns) or {},
+            scrollColumns = (isCurrent and layoutsModule.scrollColumns or ws.scrollColumns) or {},
+            scrollViewOffset = (isCurrent and layoutsModule.scrollViewOffset or ws.scrollViewOffset) or 0,
+        }
+    end
+
+    return data
+end
+
+--- Restore saved workspace assignments. Windows that no longer exist are dropped.
+--- Must run before the window filter starts so existing windows aren't re-added to the current workspace.
+function WorkspaceManager:restore(data)
+    if type(data) ~= "table" or type(data.workspaces) ~= "table" then return false end
+
+    local restored = 0
+    for i = 1, 9 do
+        local saved, ws = data.workspaces[i], self.workspaces[i]
+        if type(saved) == "table" then
+            ws.layout = saved.layout or ws.layout
+            ws.scrollViewOffset = saved.scrollViewOffset or 0
+            ws.tileColumns = saved.tileColumns or {}
+            ws.scrollColumns = saved.scrollColumns or {}
+            ws.focused = saved.focused
+
+            for idStr, winData in pairs(saved.windows or {}) do
+                local winId = tonumber(idStr)
+                local win = winId and hs.window.get(winId)
+                if win and self.spoon.helpers:isRelevantWindow(win) and not self.windowToWorkspace[winId] then
+                    ws.windows[winId] = { frame = winData.frame, floating = winData.floating or false }
+                    self.windowToWorkspace[winId] = i
+                    if winData.floating then self.spoon.state.floatingWindows[winId] = true end
+                    restored = restored + 1
+                end
             end
+
+            if ws.focused and not ws.windows[ws.focused] then ws.focused = nil end
+        end
+    end
+
+    local current = tonumber(data.current)
+    if current and current >= 1 and current <= 9 then self.current = current end
+
+    -- The layouts module holds the live columns of the current workspace
+    local layoutsModule, cur = self.spoon.layoutsModule, self:getCurrentWorkspace()
+    if layoutsModule then
+        layoutsModule.tileColumns = cur.tileColumns or {}
+        layoutsModule.scrollColumns = cur.scrollColumns or {}
+        layoutsModule.scrollViewOffset = cur.scrollViewOffset or 0
+    end
+
+    return restored > 0
+end
+
+--- Adopt windows we don't know about into the current workspace (anything restored keeps its workspace)
+function WorkspaceManager:syncExistingWindows()
+    local screen = hs.screen.mainScreen()
+    local sf = screen and screen:frame()
+
+    for _, win in ipairs(hs.window.allWindows()) do
+        local winId = win:id()
+        if winId and not self.windowToWorkspace[winId] and self.spoon.helpers:isRelevantWindow(win) then
+            local ok, frame = pcall(function() return win:frame() end)
+
+            -- A window parked off-screen by a previous session that we can't place: bring it back
+            if ok and frame and sf and frame.x >= sf.x + sf.w - 2 and frame.y >= sf.y + sf.h - 2 then
+                frame = { x = sf.x + sf.w * 0.2, y = sf.y + sf.h * 0.2, w = sf.w * 0.6, h = sf.h * 0.6 }
+                pcall(function() win:setFrame(frame) end)
+            end
+
+            self.workspaces[self.current].windows[winId] = {
+                frame = ok and plainFrame(frame) or nil,
+                floating = self.spoon.state.floatingWindows[winId] or false
+            }
+            self.windowToWorkspace[winId] = self.current
         end
     end
 end

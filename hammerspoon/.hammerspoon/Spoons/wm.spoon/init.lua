@@ -62,7 +62,7 @@ obj.config = {
 
 -- Constants and initial state
 obj.layouts = { "tile", "scroll", "stack" }
-obj.settingsFile = hs.fs.pathToAbsolute("~/.hammerspoon/wm_settings.json")
+obj.settingsFile = (hs.configdir or (os.getenv("HOME") .. "/.hammerspoon")) .. "/wm_settings.json"
 obj.state = {
     currentLayout = 1,
     windows = {},
@@ -77,7 +77,8 @@ obj.state = {
     layoutChanged = false,
     ignoreNextUpdate = false,
     alertUUID = nil,
-    fullscreenWindows = {}
+    fullscreenWindows = {},
+    ready = false -- Set once startup is complete; settings are never written before this
 }
 
 -- Load modules
@@ -283,16 +284,20 @@ end
 -- Settings management with streamlined logic
 function obj:loadSettings()
     local file = io.open(self.settingsFile, "r")
-    if not file then return end
+    if not file then return end -- First run: nothing to load
 
     local content = file:read("*all")
     file:close()
+    if not content or content == "" then return end
 
     local success, settings = pcall(hs.json.decode, content)
-    if not success or not settings then return end
+    if not success or type(settings) ~= "table" then
+        print("[WM Error] Ignoring unreadable settings file: " .. tostring(self.settingsFile))
+        return
+    end
 
     -- Load state (excluding runtime-only fields)
-    local excludedStateKeys = { alertUUID = true, floatingWindows = true, floatingSteps = true }
+    local excludedStateKeys = { alertUUID = true, floatingWindows = true, floatingSteps = true, ready = true }
     for k, v in pairs(settings) do
         if self.state[k] ~= nil and not excludedStateKeys[k] then
             self.state[k] = v
@@ -310,6 +315,9 @@ function obj:loadSettings()
 
     convertIds(settings.floatingWindows, self.state.floatingWindows)
     convertIds(settings.floatingSteps, self.state.floatingSteps)
+
+    -- Workspace assignments are restored when the spoon starts (see API:start)
+    self.state.pendingWorkspaces = settings.workspaces
 
     -- Store workspace layouts to apply after workspaceManager is initialized
     if settings.workspaceLayouts then
@@ -330,7 +338,23 @@ function obj:loadSettings()
     end
 end
 
-function obj:saveSettings()
+-- Debounced: layout updates fire in bursts, and writing the file each time is wasteful
+function obj:saveSettings(immediate)
+    if not self.state.ready then return end
+    if immediate then
+        if self._saveTimer then
+            self._saveTimer:stop(); self._saveTimer = nil
+        end
+        return self:writeSettings()
+    end
+    if self._saveTimer then self._saveTimer:stop() end
+    self._saveTimer = hs.timer.doAfter(0.3, function()
+        self._saveTimer = nil
+        self:writeSettings()
+    end)
+end
+
+function obj:writeSettings()
     -- Convert floating IDs to strings for JSON serialization
     local function convertIdsToStrings(source)
         local result = {}
@@ -358,6 +382,7 @@ function obj:saveSettings()
         spaceLayouts = self.state.spaceLayouts,
         spaceWindowOrder = self.state.spaceWindowOrder,
         workspaceLayouts = workspaceLayouts,
+        workspaces = self.workspaceManager and self.workspaceManager:serialize() or nil,
 
         -- Config (only user-modifiable parts)
         config = {
@@ -373,21 +398,28 @@ function obj:saveSettings()
     }
 
     local success, json = pcall(hs.json.encode, settings)
-    if success and json then
-        local file, err = io.open(self.settingsFile, "w")
-        if file then
-            local writeOk, writeErr = pcall(function()
-                file:write(json)
-                file:close()
-            end)
-            if not writeOk then
-                print("[WM Error] Failed to write settings: " .. tostring(writeErr))
-            end
-        else
-            print("[WM Error] Failed to open settings file for writing: " .. tostring(err))
-        end
-    elseif not success then
+    if not success or not json then
         print("[WM Error] Failed to encode settings: " .. tostring(json))
+        return
+    end
+
+    -- Write to a temp file and rename so a crash mid-write can't corrupt the settings
+    local tmpPath = self.settingsFile .. ".tmp"
+    local file, err = io.open(tmpPath, "w")
+    if not file then
+        print("[WM Error] Failed to open settings file for writing: " .. tostring(err))
+        return
+    end
+    local writeOk, writeErr = pcall(file.write, file, json)
+    file:close()
+    if not writeOk then
+        print("[WM Error] Failed to write settings: " .. tostring(writeErr))
+        os.remove(tmpPath)
+        return
+    end
+    local renamed, renameErr = os.rename(tmpPath, self.settingsFile)
+    if not renamed then
+        print("[WM Error] Failed to replace settings file: " .. tostring(renameErr))
     end
 end
 

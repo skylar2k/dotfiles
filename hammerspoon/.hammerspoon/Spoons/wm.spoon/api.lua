@@ -152,6 +152,7 @@ function API:focusWorkspace(id)
         self.spoon.state.windows = windows
         self.spoon.ui:updateAll()
         if self.spoon.menubar then self.spoon.menubar:update() end
+        self.spoon:saveSettings()
     end
     -- Clear flag after windows have settled (prevents windowMoved from triggering retile)
     hs.timer.doAfter(0.2, function()
@@ -188,6 +189,7 @@ function API:moveToWorkspace(id, follow)
         end
         if self.spoon.menubar then self.spoon.menubar:update() end
         self.spoon.ui:updateAll()
+        self.spoon:saveSettings()
     end
 
     -- Clear flag after windows have settled
@@ -208,11 +210,13 @@ function API:start()
     local updateLayout = function(source)
         -- Skip during workspace switching or if explicitly ignored
         if spoon.state.switchingWorkspace or spoon.state.ignoreNextUpdate then
-            print("[WM] updateLayout skipped (switching=" ..
-                tostring(spoon.state.switchingWorkspace) .. ") source=" .. (source or "unknown"))
+            if spoon.config.debug then
+                print("[WM] updateLayout skipped (switching=" ..
+                    tostring(spoon.state.switchingWorkspace) .. ") source=" .. (source or "unknown"))
+            end
             return
         end
-        print("[WM] updateLayout called from " .. (source or "unknown"))
+        if spoon.config.debug then print("[WM] updateLayout called from " .. (source or "unknown")) end
         hs.timer.doAfter(spoon.config.timing.layoutUpdateDelay, function()
             -- Double-check flags after delay
             if not spoon.state.switchingWorkspace and not spoon.state.ignoreNextUpdate then
@@ -221,6 +225,13 @@ function API:start()
             end
         end)
     end
+
+    -- Restore workspace assignments from the last session BEFORE subscribing to the window
+    -- filter, otherwise existing windows get re-added to the current workspace
+    if wm and spoon.state.pendingWorkspaces then
+        wm:restore(spoon.state.pendingWorkspaces)
+    end
+    spoon.state.pendingWorkspaces = nil
 
     -- Main window filter with all change events
     local windowFilter = hs.window.filter.default
@@ -518,6 +529,7 @@ function API:start()
         -- Sync existing windows to workspace 1
         if wm then wm:syncExistingWindows() end
 
+        spoon.state.ready = true -- From here on, settings may be written
         spoon.state.layoutChanged = true
         spoon:updateLayout()
         spoon.core:showAlert("WindowManager+ Ready")
