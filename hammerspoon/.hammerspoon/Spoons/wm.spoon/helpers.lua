@@ -1,4 +1,4 @@
--- LaWM Helpers
+-- WM Helpers
 local Helpers = {}
 Helpers.__index = Helpers
 
@@ -14,7 +14,7 @@ function Helpers:isRelevantWindow(win)
     if not ok or not isStandard then return false end
 
     -- For stack layout: windows are intentionally hidden off-screen, so check if tracked
-    local layout = self.spoon.layouts and self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()]
+    local layout = self.spoon.layouts and self.spoon:getCurrentLayoutName()
     if layout == "stack" then
         local winId = win:id()
         -- If window is in our tracked windows list, it's relevant even if "not visible"
@@ -43,36 +43,37 @@ function Helpers:isRelevantWindow(win)
 
     local title = win:title() or ""
     local lowerTitle = string.lower(title)
+    local winId = win:id()
+    local frame = win:frame()
+    local config = self.spoon.config
 
-    -- Check keywords and mark as floating if found
-    local function checkKeywords(keywords)
-        for _, keyword in ipairs(keywords) do
-            if string.find(lowerTitle, string.lower(keyword)) then
-                self.spoon.state.floatingWindows[win:id()] = true
-                return true
-            end
-        end
+    local function markFloating()
+        if winId then self.spoon.state.floatingWindows[winId] = true end
         return false
     end
 
-    -- Check status and settings keywords
-    if checkKeywords(self.spoon.config.statusKeywords) or
-        checkKeywords(self.spoon.config.settingsKeywords) then
-        return false
+    -- Title keywords only count for small windows: "Network - Wikipedia" is a normal browser tab,
+    -- while a small "Network Settings" panel should float.
+    local maxSize = config.keywordWindowMaxSize or { width = 1000, height = 700 }
+    if frame.w < maxSize.width and frame.h < maxSize.height then
+        for _, keywords in ipairs({ config.statusKeywords, config.settingsKeywords }) do
+            for _, keyword in ipairs(keywords) do
+                if string.find(lowerTitle, string.lower(keyword), 1, true) then
+                    return markFloating()
+                end
+            end
+        end
     end
 
     -- Advanced settings detection
     if self:isSettingsWindow(win, appName, title) then
-        self.spoon.state.floatingWindows[win:id()] = true
-        return false
+        return markFloating()
     end
 
     -- Check small window threshold
-    local frame = win:frame()
-    local threshold = self.spoon.config.smallWindowThreshold
+    local threshold = config.smallWindowThreshold
     if frame.w < threshold.width and frame.h < threshold.height then
-        self.spoon.state.floatingWindows[win:id()] = true
-        return false
+        return markFloating()
     end
 
     return true
@@ -88,6 +89,11 @@ function Helpers:isSettingsWindow(win, appName, title)
             return true
         end
     end
+
+    -- Title patterns below are only trusted for small windows (see isRelevantWindow)
+    local maxSize = self.spoon.config.keywordWindowMaxSize or { width = 1000, height = 700 }
+    local size = win:frame()
+    if size.w >= maxSize.width or size.h >= maxSize.height then return false end
 
     -- App-specific patterns - consolidated into table
     local appPatterns = {
@@ -117,8 +123,7 @@ function Helpers:isSettingsWindow(win, appName, title)
     end
 
     -- Size-based detection with keywords
-    local frame = win:frame()
-    if frame.w < 800 and frame.h < 600 then
+    if size.w < 800 and size.h < 600 then
         local settingsWords = { "setting", "preference", "config", "option" }
         for _, word in ipairs(settingsWords) do
             if string.find(lowerTitle, word) then return true end
@@ -143,7 +148,7 @@ function Helpers:getRelevantWindows()
     end
 
     -- For stack layout: ensure all tracked windows are included even if hidden off-screen
-    local layout = self.spoon.layouts and self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()]
+    local layout = self.spoon.layouts and self.spoon:getCurrentLayoutName()
     if layout == "stack" and self.spoon.state and self.spoon.state.windows then
         for _, win in ipairs(self.spoon.state.windows) do
             local ok, winId = pcall(function() return win:id() end)

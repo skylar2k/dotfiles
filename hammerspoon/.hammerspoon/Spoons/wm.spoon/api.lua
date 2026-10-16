@@ -1,4 +1,4 @@
--- LaWM API
+-- WM API
 local API = {}
 API.__index = API
 
@@ -22,7 +22,7 @@ function API:chooseLayout()
     for i, name in ipairs(self.spoon.layouts) do
         table.insert(choices, {
             text = name:upper(),
-            subText = name == self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()] and "Current" or "",
+            subText = name == self.spoon:getCurrentLayoutName() and "Current" or "",
             index = i
         })
     end
@@ -204,6 +204,18 @@ function API:start()
     local spoon = self.spoon
     local wm = spoon.workspaceManager
 
+    -- Starting twice would double every subscription; tear down the previous run first
+    if self.started then self:stop() end
+    self.started = true
+    self.subscriptions = {}
+    self.floatingFilters = {}
+
+    local windowFilter = hs.window.filter.default
+    local function subscribe(event, fn)
+        windowFilter:subscribe(event, fn)
+        table.insert(self.subscriptions, { event = event, fn = fn })
+    end
+
     -- Start menubar
     if spoon.menubar then spoon.menubar:start() end
 
@@ -233,11 +245,8 @@ function API:start()
     end
     spoon.state.pendingWorkspaces = nil
 
-    -- Main window filter with all change events
-    local windowFilter = hs.window.filter.default
-
     -- Window created - add to current workspace
-    windowFilter:subscribe(hs.window.filter.windowCreated, function(win)
+    subscribe(hs.window.filter.windowCreated, function(win)
         if win and spoon.helpers:isRelevantWindow(win) then
             -- Check window rules for auto-assignment
             local targetWorkspace = nil
@@ -268,7 +277,7 @@ function API:start()
     end)
 
     -- Window destroyed - remove from workspace
-    windowFilter:subscribe(hs.window.filter.windowDestroyed, function(win)
+    subscribe(hs.window.filter.windowDestroyed, function(win)
         if win then
             local winId = win:id()
             if winId and wm then wm:removeWindow(winId) end
@@ -277,7 +286,7 @@ function API:start()
     end)
 
     -- Window minimized/unminimized
-    windowFilter:subscribe(hs.window.filter.windowMinimized, function(win)
+    subscribe(hs.window.filter.windowMinimized, function(win)
         -- Set flag to prevent workspace switch when minimizing causes focus change
         spoon.state.justMinimized = true
         hs.timer.doAfter(0.15, function()
@@ -286,71 +295,54 @@ function API:start()
         updateLayout("windowMinimized")
     end)
 
-    windowFilter:subscribe(hs.window.filter.windowUnminimized, function() updateLayout("windowUnminimized") end)
-    windowFilter:subscribe(hs.window.filter.windowsChanged, function() updateLayout("windowsChanged") end)
+    subscribe(hs.window.filter.windowUnminimized, function() updateLayout("windowUnminimized") end)
+    subscribe(hs.window.filter.windowsChanged, function() updateLayout("windowsChanged") end)
 
     local lastFocusedWinId = nil
     local lastFocusTime = 0
-    windowFilter:subscribe(hs.window.filter.windowFocused, function(win)
-        if win then
-            local winId = win:id()
-            if not winId then return end
+    subscribe(hs.window.filter.windowFocused, function(win)
+        if not win then return end
+        local winId = spoon.helpers:getWindowId(win)
+        if not winId then return end
 
-            -- Skip focus handling during workspace switching or right after minimize
-            if spoon.state.switchingWorkspace then return end
-            if spoon.state.justMinimized then return end
-            if spoon.state.rotatingStack then return end
+        -- Skip focus handling during workspace switching or right after minimize
+        if spoon.state.switchingWorkspace or spoon.state.justMinimized or spoon.state.rotatingStack then return end
 
-            -- Prevent focus loop: skip if same window focused again
-            if winId == lastFocusedWinId then return end
-
-            -- Debounce rapid focus changes (prevent loops)
-            local now = hs.timer.secondsSinceEpoch()
-            if now - lastFocusTime < 0.1 then return end
-            lastFocusTime = now
-
+        -- Focusing a window that lives in another workspace (Dock click, Cmd+Tab) switches to it.
+        -- This must come before the de-duplication below, or re-focusing the same window never switches.
+        local targetWs = wm and wm.windowToWorkspace[winId]
+        if targetWs and targetWs ~= wm.current then
+            wm.workspaces[targetWs].focused = winId -- Land on the window the user asked for
+            self:focusWorkspace(targetWs)
             lastFocusedWinId = winId
-
-            -- Only switch workspace if window is relevant (not dialogs, etc.)
-            local isRelevant = pcall(function() return spoon.helpers:isRelevantWindow(win) end)
-
-            -- Switch to workspace containing this window (e.g., when clicking Dock)
-            if wm and isRelevant then
-                local targetWs = wm.windowToWorkspace[winId]
-                if targetWs and targetWs ~= wm.current then
-                    wm:switchToWorkspace(targetWs)
-                    spoon:updateLayout(false)
-                    if spoon.menubar then spoon.menubar:update() end
-                end
-            end
-
-            -- For Scroll: scroll to show the focused window's column
-            local layout = spoon.layouts[spoon:getLayoutForCurrentSpace()]
-            if layout == "scroll" and spoon.layoutsModule then
-                local cols = spoon.layoutsModule.scrollColumns
-                if cols and #cols > 0 then
-                    for colIdx, col in ipairs(cols) do
-                        for _, id in ipairs(col) do
-                            if id == winId then
-                                local newOffset = colIdx - 1
-                                -- Only update if offset actually changed to prevent focus loops
-                                if spoon.layoutsModule.scrollViewOffset ~= newOffset then
-                                    spoon.layoutsModule.scrollViewOffset = newOffset
-                                    spoon:updateLayout(true)
-                                end
-                                break
-                            end
-                        end
-                    end
-                end
-            end
-
-            pcall(function() win:raise() end)
-            spoon.ui:updateAll()
+            return
         end
+
+        -- Prevent focus loop: skip if same window focused again
+        if winId == lastFocusedWinId then return end
+
+        -- Debounce rapid focus changes (prevent loops)
+        local now = hs.timer.secondsSinceEpoch()
+        if now - lastFocusTime < 0.1 then return end
+        lastFocusTime = now
+        lastFocusedWinId = winId
+
+        -- For Scroll: scroll to show the focused window's column
+        local layoutsModule = spoon.layoutsModule
+        if layoutsModule and spoon:getCurrentLayoutName() == "scroll" then
+            local colIdx = layoutsModule:scrollFindWindow(winId)
+            -- Only update if offset actually changed to prevent focus loops
+            if colIdx and layoutsModule.scrollViewOffset ~= colIdx - 1 then
+                layoutsModule.scrollViewOffset = colIdx - 1
+                spoon:updateLayout(true)
+            end
+        end
+
+        pcall(function() win:raise() end)
+        spoon.ui:updateAll()
     end)
 
-    windowFilter:subscribe(hs.window.filter.windowMoved, function(win)
+    subscribe(hs.window.filter.windowMoved, function(win)
         if win then
             local winId = win:id()
             -- Skip during workspace switching to prevent re-tiling restored windows
@@ -424,7 +416,7 @@ function API:start()
                                     spoon.state.windows[i], spoon.state.windows[srcIdx]
 
                                 -- For Scroll/Tile, swap in column structures
-                                local layout = spoon.layouts[spoon:getLayoutForCurrentSpace()]
+                                local layout = spoon:getCurrentLayoutName()
                                 if spoon.layoutsModule then
                                     if layout == "scroll" then
                                         local cols = spoon.layoutsModule.scrollColumns
@@ -490,6 +482,7 @@ function API:start()
     -- Dialog and system window filters
     local function setupFloatingFilter(appFilters, allowRoles)
         local filter = hs.window.filter.new(false)
+        table.insert(self.floatingFilters, filter)
         if allowRoles then
             filter:setAppFilter(".*", { allowRoles = allowRoles })
         else
@@ -651,47 +644,60 @@ function API:configure(config)
     return self.spoon
 end
 
--- Force retile: clear window state and re-scan all windows
+-- Force retile: rebuild every column structure and re-scan windows. Workspace assignments are kept.
 function API:forceRetile()
     local spoon = self.spoon
     local wm = spoon.workspaceManager
 
-    -- Clear all window tracking state
     spoon.state.windows = {}
-    spoon.state.floatingWindows = {}
 
     if wm then
-        -- Clear workspace window mappings
-        wm.windowToWorkspace = {}
-        for i = 1, 9 do
-            wm.workspaces[i].windows = {}
-        end
-
-        -- Re-sync all existing windows to current workspace
-        local currentWs = wm.current
-        local allWindows = hs.window.allWindows()
-
-        for _, win in ipairs(allWindows) do
-            if spoon.helpers:isRelevantWindow(win) then
-                local winId = win:id()
-                if winId then
-                    local ws = wm.workspaces[currentWs]
-                    local ok, frame = pcall(function() return win:frame() end)
-                    ws.windows[winId] = {
-                        frame = ok and frame or nil,
-                        floating = false
-                    }
-                    wm.windowToWorkspace[winId] = currentWs
-                end
-            end
+        wm:rescan() -- Drop dead windows, adopt unknown ones into the current workspace
+        for i = 1, wm.WORKSPACE_COUNT do
+            local ws = wm.workspaces[i]
+            ws.tileColumns, ws.scrollColumns, ws.scrollViewOffset = {}, {}, 0
         end
     end
+    if spoon.layoutsModule then
+        spoon.layoutsModule.tileColumns, spoon.layoutsModule.scrollColumns = {}, {}
+        spoon.layoutsModule.scrollViewOffset = 0
+    end
 
-    -- Force layout update
     spoon.state.layoutChanged = true
     spoon:updateLayout(false)
+    if spoon.menubar then spoon.menubar:update() end
     spoon.core:showAlert("Retiled")
 
+    return spoon
+end
+
+-- Stop everything start() set up. Safe to call more than once.
+function API:stop()
+    local spoon = self.spoon
+
+    for _, sub in ipairs(self.subscriptions or {}) do
+        pcall(function() hs.window.filter.default:unsubscribe(sub.fn) end)
+    end
+    self.subscriptions = {}
+
+    for _, filter in ipairs(self.floatingFilters or {}) do
+        pcall(function() filter:unsubscribeAll() end)
+    end
+    self.floatingFilters = {}
+
+    for _, name in ipairs({ "dragTap", "dragEndTap" }) do
+        if spoon[name] then
+            spoon[name]:stop(); spoon[name] = nil
+        end
+    end
+    if self.spaceWatcher then
+        self.spaceWatcher:stop(); self.spaceWatcher = nil
+    end
+
+    if spoon.menubar then spoon.menubar:stop() end
+    if spoon.ui then spoon.ui:cleanup() end
+
+    self.started = false
     return spoon
 end
 

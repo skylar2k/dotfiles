@@ -1,4 +1,4 @@
--- LaWM UI
+-- WM UI
 local UI = {}
 UI.__index = UI
 

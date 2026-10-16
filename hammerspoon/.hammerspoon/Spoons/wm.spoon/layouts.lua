@@ -1,4 +1,4 @@
--- Layout Functions for LaWM
+-- Layout Functions for WM
 local Layouts = {}
 Layouts.__index = Layouts
 
@@ -208,35 +208,33 @@ function Layouts:tileSyncColumns(wins)
     self:tileNormalizeColumnRatios()
 end
 
+-- Locate a window in tileColumns: returns colIdx, winIdx (or nil)
+function Layouts:tileFindWindow(winId)
+    for colIdx, col in ipairs(self.tileColumns) do
+        for winIdx, id in ipairs(col.windows) do
+            if id == winId then return colIdx, winIdx end
+        end
+    end
+end
+
 -- Create new column with focused window
 function Layouts:tileCreateColumn(winId)
     if not winId then return false end
 
     -- Find and remove from current column
-    local found = false
-    for colIdx, col in ipairs(self.tileColumns) do
-        for winIdx, id in ipairs(col.windows) do
-            if id == winId then
-                table.remove(col.windows, winIdx)
-                if col.rowRatios and #col.rowRatios >= winIdx then
-                    table.remove(col.rowRatios, winIdx)
-                end
-                found = true
-                break
-            end
-        end
-        if found then
-            -- Remove empty column
-            if #col.windows == 0 then
-                table.remove(self.tileColumns, colIdx)
-            else
-                self:tileNormalizeRowRatios(col)
-            end
-            break
-        end
-    end
+    local colIdx, winIdx = self:tileFindWindow(winId)
+    if not colIdx then return false end
 
-    if not found then return false end
+    local col = self.tileColumns[colIdx]
+    table.remove(col.windows, winIdx)
+    if col.rowRatios and #col.rowRatios >= winIdx then
+        table.remove(col.rowRatios, winIdx)
+    end
+    if #col.windows == 0 then
+        table.remove(self.tileColumns, colIdx) -- Remove empty column
+    else
+        self:tileNormalizeRowRatios(col)
+    end
 
     -- Create new column at the end
     local numCols = #self.tileColumns
@@ -256,17 +254,7 @@ end
 function Layouts:tileMoveLeft(winId)
     if not winId then return false end
 
-    local sourceColIdx, sourceWinIdx
-    for colIdx, col in ipairs(self.tileColumns) do
-        for winIdx, id in ipairs(col.windows) do
-            if id == winId then
-                sourceColIdx = colIdx
-                sourceWinIdx = winIdx
-                break
-            end
-        end
-        if sourceColIdx then break end
-    end
+    local sourceColIdx, sourceWinIdx = self:tileFindWindow(winId)
 
     if not sourceColIdx or sourceColIdx <= 1 then return false end
 
@@ -300,17 +288,7 @@ end
 function Layouts:tileMoveRight(winId)
     if not winId then return false end
 
-    local sourceColIdx, sourceWinIdx
-    for colIdx, col in ipairs(self.tileColumns) do
-        for winIdx, id in ipairs(col.windows) do
-            if id == winId then
-                sourceColIdx = colIdx
-                sourceWinIdx = winIdx
-                break
-            end
-        end
-        if sourceColIdx then break end
-    end
+    local sourceColIdx, sourceWinIdx = self:tileFindWindow(winId)
 
     if not sourceColIdx then return false end
 
@@ -346,17 +324,7 @@ end
 
 -- Resize column width
 function Layouts:tileResizeColumn(winId, direction)
-    local colIdx
-    for i, col in ipairs(self.tileColumns) do
-        for _, id in ipairs(col.windows) do
-            if id == winId then
-                colIdx = i
-                break
-            end
-        end
-        if colIdx then break end
-    end
-
+    local colIdx = self:tileFindWindow(winId)
     if not colIdx or #self.tileColumns < 2 then return false end
 
     local step = (self.spoon.config.resizing and self.spoon.config.resizing.step) or 0.05
@@ -389,18 +357,8 @@ end
 
 -- Resize row height within column
 function Layouts:tileResizeRow(winId, direction)
-    local targetCol, winIdx
-    for _, col in ipairs(self.tileColumns) do
-        for i, id in ipairs(col.windows) do
-            if id == winId then
-                targetCol = col
-                winIdx = i
-                break
-            end
-        end
-        if targetCol then break end
-    end
-
+    local colIdx, winIdx = self:tileFindWindow(winId)
+    local targetCol = colIdx and self.tileColumns[colIdx]
     if not targetCol or #targetCol.windows < 2 then return false end
 
     -- Initialize rowRatios if not present
@@ -635,6 +593,15 @@ function Layouts:layout_scroll(screen, wins)
                     pcall(function() win:setTopLeft(offScreenPos) end)
                 end
             end
+        end
+    end
+end
+
+-- Index of the scroll column containing winId (or nil)
+function Layouts:scrollFindWindow(winId)
+    for colIdx, col in ipairs(self.scrollColumns or {}) do
+        for _, id in ipairs(col) do
+            if id == winId then return colIdx end
         end
     end
 end

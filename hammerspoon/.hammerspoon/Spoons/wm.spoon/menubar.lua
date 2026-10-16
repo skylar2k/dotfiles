@@ -1,4 +1,4 @@
--- LaWM Menubar Module
+-- WM Menubar Module
 -- Displays workspace indicators in the menubar
 
 local Menubar = {}
@@ -45,7 +45,7 @@ function Menubar:update()
     local current = wm.current
 
     -- Get layout info for color
-    local layout = self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()]
+    local layout = self.spoon:getCurrentLayoutName()
     local tilingEnabled = self.spoon.core:isTilingEnabled()
     local modeColors = self.spoon.config.modeColors or {}
 
@@ -146,7 +146,7 @@ function Menubar:showMenu()
     table.insert(menuItems, { title = "-" })
 
     -- Add layout info
-    local layout = self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()]
+    local layout = self.spoon:getCurrentLayoutName()
     local tilingEnabled = self.spoon.core:isTilingEnabled()
 
     table.insert(menuItems, {

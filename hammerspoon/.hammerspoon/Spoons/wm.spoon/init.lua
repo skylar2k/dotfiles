@@ -1,4 +1,4 @@
--- LaWM (Lattice Window Manager)
+-- WM
 local obj = {}
 obj.__index = obj
 
@@ -24,6 +24,7 @@ obj.config = {
     resizing = { step = 0.05, minRatio = 0.15, maxRatio = 0.85 },
     timing = { layoutUpdateDelay = 0.08, spaceChangeDelay = 0.12, initialSetupDelay = 0.15, windowLockDuration = 0.4 },
     smallWindowThreshold = { width = 450, height = 320 },
+    keywordWindowMaxSize = { width = 1000, height = 700 }, -- Title keywords only float windows smaller than this
     focusedWindowIndicator = { width = 50, height = 4, opacity = 0.9, borderRadius = 2 },
     stackIndicators = { enabled = true, position = "bottomLeft", width = 40, height = 5, spacing = 5, maxIndicators = 10, borderRadius = 2.5 },
     alerts = {
@@ -69,7 +70,7 @@ obj.state = {
     floatingWindows = {},
     floatingSteps = {},
     splitRatios = {},
-    tilingEnabled = true, -- Global tiling toggle
+    tileEnabled = true, -- Global tiling toggle (persisted)
     splitDirections = {},
     windowTree = {},
     spaceLayouts = {},
@@ -90,17 +91,16 @@ local WorkspaceManager = dofile(hs.spoons.resourcePath("workspace_manager.lua"))
 local Layouts = dofile(hs.spoons.resourcePath("layouts.lua"))
 local Menubar = dofile(hs.spoons.resourcePath("menubar.lua"))
 
--- Simplified color processing
 function obj:hexToColor(hex, alpha)
     if type(hex) == "table" then return hex end
 
-    hex = hex:gsub("#", "")
-    return {
-        red = tonumber(hex:sub(1, 2), 16) / 255,
-        green = tonumber(hex:sub(3, 4), 16) / 255,
-        blue = tonumber(hex:sub(5, 6), 16) / 255,
-        alpha = alpha or 1.0
-    }
+    local digits = tostring(hex):gsub("#", "")
+    local r, g, b = tonumber(digits:sub(1, 2), 16), tonumber(digits:sub(3, 4), 16), tonumber(digits:sub(5, 6), 16)
+    if #digits ~= 6 or not (r and g and b) then
+        print("[WM Config Warning] Invalid hex color '" .. tostring(hex) .. "', using gray")
+        return { red = 0.5, green = 0.5, blue = 0.5, alpha = alpha or 1.0 }
+    end
+    return { red = r / 255, green = g / 255, blue = b / 255, alpha = alpha or 1.0 }
 end
 
 function obj:processColors()
@@ -165,6 +165,11 @@ function obj:getLayoutForCurrentSpace()
     return self.state.currentLayout
 end
 
+-- Name of the layout ("tile" | "scroll" | "stack") for the current workspace
+function obj:getCurrentLayoutName()
+    return self.layouts[self:getLayoutForCurrentSpace()]
+end
+
 -- Set layout for current workspace
 function obj:setLayoutForCurrentSpace(layoutIndex)
     local wm = self.workspaceManager
@@ -176,9 +181,15 @@ function obj:setLayoutForCurrentSpace(layoutIndex)
 end
 
 -- Window order management
+-- Saved window order is tracked per workspace (not per macOS Space): workspaces share one Space
+function obj:getOrderKey()
+    local wm = self.workspaceManager
+    return wm and ("ws" .. wm.current) or self:getCurrentSpaceID()
+end
+
 function obj:saveWindowOrderForCurrentSpace()
-    local spaceID = self:getCurrentSpaceID()
-    if not spaceID or not self.state.windows then return end
+    local orderKey = self:getOrderKey()
+    if not orderKey or not self.state.windows then return end
 
     local windowOrder = {}
     for i, win in ipairs(self.state.windows) do
@@ -209,14 +220,14 @@ function obj:saveWindowOrderForCurrentSpace()
         end
     end
 
-    self.state.spaceWindowOrder[spaceID] = windowOrder
+    self.state.spaceWindowOrder[orderKey] = windowOrder
 end
 
 function obj:restoreWindowOrderForCurrentSpace()
-    local spaceID = self:getCurrentSpaceID()
-    if not spaceID or not self.state.spaceWindowOrder[spaceID] then return false end
+    local orderKey = self:getOrderKey()
+    if not orderKey or not self.state.spaceWindowOrder[orderKey] then return false end
 
-    local savedOrder = self.state.spaceWindowOrder[spaceID]
+    local savedOrder = self.state.spaceWindowOrder[orderKey]
 
     -- Get windows from workspace manager if available, otherwise fallback
     local currentWindows
@@ -316,6 +327,8 @@ function obj:loadSettings()
     convertIds(settings.floatingWindows, self.state.floatingWindows)
     convertIds(settings.floatingSteps, self.state.floatingSteps)
 
+    if type(settings.tileEnabled) == "boolean" then self.state.tileEnabled = settings.tileEnabled end
+
     -- Workspace assignments are restored when the spoon starts (see API:start)
     self.state.pendingWorkspaces = settings.workspaces
 
@@ -375,6 +388,7 @@ function obj:writeSettings()
     local settings = {
         -- State
         currentLayout = self.state.currentLayout,
+        tileEnabled = self.state.tileEnabled,
         splitRatios = self.state.splitRatios,
         splitDirections = self.state.splitDirections,
         floatingWindows = convertIdsToStrings(self.state.floatingWindows),
@@ -434,6 +448,11 @@ end
 
 function obj:start()
     return self.api:start()
+end
+
+function obj:stop()
+    self:saveSettings(true)
+    return self.api:stop()
 end
 
 return obj
