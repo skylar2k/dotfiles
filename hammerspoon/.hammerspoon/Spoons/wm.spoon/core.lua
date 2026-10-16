@@ -138,12 +138,8 @@ function Core:updateLayout(preserveOrder)
     if preserveOrder and #self.spoon.state.windows > 0 then
         -- Preserve current window order (for rotation/swap)
         windows = self:validateWindows()
-    elseif wm then
-        -- Get windows from workspace manager
-        windows = wm:getWindowsForLayout()
     else
-        -- Fallback to all relevant windows
-        windows = self.spoon.helpers:getRelevantWindows()
+        windows = wm:getWindowsForLayout()
     end
 
     self.spoon.state.windows = windows
@@ -165,8 +161,7 @@ end
 
 -- Current workspace windows, keeping the order of state.windows and appending new ones in workspace order
 function Core:validateWindows()
-    local wm = self.spoon.workspaceManager
-    local sourceWindows = wm and wm:getWindowsForLayout() or self.spoon.helpers:getRelevantWindows()
+    local sourceWindows = self.spoon.workspaceManager:getWindowsForLayout()
 
     local byId = {}
     for _, w in ipairs(sourceWindows) do
@@ -191,24 +186,19 @@ function Core:validateWindows()
     return valid
 end
 
+-- Keep floating windows of the current workspace above the tiled ones, forget the ones that are gone
 function Core:handleFloatingWindows()
-    local toRemove = {}
-    for id, _ in pairs(self.spoon.state.floatingWindows) do
+    local wm = self.spoon.workspaceManager
+    local gone = {}
+    for id in pairs(self.spoon.state.floatingWindows) do
         local w = hs.window.get(id)
-        if w then
-            local isRelevant = false
-            pcall(function() isRelevant = self.spoon.helpers:isRelevantWindow(w) end)
-            if isRelevant then
-                pcall(function() w:raise() end)
-            else
-                table.insert(toRemove, id)
-            end
-        else
-            table.insert(toRemove, id)
+        if not w then
+            gone[#gone + 1] = id
+        elseif wm.windowToWorkspace[id] == wm.current then
+            pcall(function() w:raise() end)
         end
     end
-    -- Remove invalid floating windows after iteration
-    for _, id in ipairs(toRemove) do
+    for _, id in ipairs(gone) do
         self.spoon.state.floatingWindows[id] = nil
     end
 end
@@ -358,52 +348,47 @@ function Core:moveToPosition(pos)
         function() self.spoon.state.ignoreNextUpdate = false end)
 end
 
+-- Shows the focused window's matchable properties and prints a rule you can paste into your config
 function Core:showWindowInfo()
-    local win = hs.window.focusedWindow()
+    local win, winId = self:getFocusedWindow()
     if not win then
         self:showAlert("No focused window")
         return
     end
 
-    local ok, winId = pcall(function() return win:id() end)
-    if not ok or not winId then return end
-
-    local app = win:application()
-    local appName = app and app:name() or "?"
-    local title = win:title() or ""
-    local subrole = win:subrole() or "?"
-    local frame = win:frame()
-    local isFloating = self.spoon.state.floatingWindows[winId] and "yes" or "no"
+    local rules = self.spoon.rules
+    local info = rules:describe(win)
+    local result = rules:classify(win)
     local wm = self.spoon.workspaceManager
-    local wsId = wm and wm.windowToWorkspace[winId] or "?"
+    local title = info.title or ""
 
-    local info = string.format(
-        "%s\n%s\nID: %s | WS: %s\nFloating: %s | Subrole: %s\nSize: %dx%d",
-        appName, #title > 30 and title:sub(1, 27) .. "..." or title,
-        winId, wsId, isFloating, subrole, frame.w, frame.h
-    )
-    hs.alert.show(info, 4)
+    print("[WM] window info: " .. hs.inspect(info))
+    print("[WM] rule snippet: " .. rules:snippet(win))
+
+    hs.alert.show(string.format(
+        "%s (%s)\n%s\nsubrole: %s | ax_id: %s\nfullscreen: %s | close: %s\nmanaged as: %s%s | workspace %s | id %s",
+        info.app_name or "?", info.app_id or "?",
+        #title > 40 and title:sub(1, 37) .. "..." or title,
+        info.subrole or "none", info.ax_id or "none",
+        info.fullscreen_button or "?", info.close_button or "?",
+        result.manage, result.rule and (" via " .. result.rule) or "",
+        wm.windowToWorkspace[winId] or "-", winId), 6)
 end
 
 function Core:toggleFloatingWindow()
-    -- Always allow toggling - don't check isRelevantWindow (user override)
     local win, winId = self:getFocusedWindow()
     if not win then return end
 
     local wm = self.spoon.workspaceManager
-    local setFloating = function(floating)
-        if wm then
-            wm:setFloating(winId, floating)
-        else
-            self.spoon.state.floatingWindows[winId] = floating or nil
-        end
-    end
+
+    -- Untracked windows (e.g. ignored by a rule) can be adopted by toggling them
+    if not wm.windowToWorkspace[winId] then wm:addWindow(win, false) end
 
     if self.spoon.state.floatingWindows[winId] then
-        setFloating(false)
+        wm:setFloating(winId, false, true) -- manual: rules never override this
         self:showAlert("Tiled")
     else
-        setFloating(true)
+        wm:setFloating(winId, true, true)
         -- Center the floating window
         local frameOk, f = pcall(function() return win:frame() end)
         local mainScreen = hs.screen.mainScreen()
@@ -603,7 +588,7 @@ function Core:toggleFullscreen()
 
         -- Restore floating state
         if not saved.wasFloating then
-            self.spoon.state.floatingWindows[winId] = nil
+            self.spoon.workspaceManager:setFloating(winId, false)
         end
 
         -- Restore frame or retile
@@ -625,7 +610,7 @@ function Core:toggleFullscreen()
         }
 
         -- Make floating and maximize
-        self.spoon.state.floatingWindows[winId] = true
+        self.spoon.workspaceManager:setFloating(winId, true)
         win:setFrame(scr)
         win:raise()
         self:showAlert("Fullscreen")

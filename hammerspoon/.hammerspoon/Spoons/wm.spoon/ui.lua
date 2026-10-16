@@ -30,11 +30,9 @@ function UI:updateFocusedWindowIndicator()
     local win = hs.window.focusedWindow()
     if not win then return end
 
-    -- Use pcall for window operations
-    local ok, isRelevant = pcall(function()
-        return self.spoon.helpers:isRelevantWindow(win)
-    end)
-    if not ok or not isRelevant then return end
+    -- Only tiled windows of the current workspace get an indicator
+    local winId = self.spoon.helpers:getWindowId(win)
+    if not winId or not self.spoon.workspaceManager:isTiled(winId) then return end
 
     local ok2, frame = pcall(function() return win:frame() end)
     if not ok2 or not frame then return end

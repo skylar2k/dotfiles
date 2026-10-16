@@ -13,6 +13,10 @@ wm:configure({
         showWindowCount = true,
     },
 
+    rules = {
+        { app_id = "com.apple.finder",  action = "float" },
+        { app_id = "com.apple.Preview", action = "float", dimensions = { 900, 700 }, center = true },
+    },
 })
 
 --------------------------------------------------------------------------------

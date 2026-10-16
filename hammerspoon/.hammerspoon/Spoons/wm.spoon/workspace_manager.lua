@@ -70,12 +70,15 @@ function WorkspaceManager:getCurrentWorkspace()
 end
 
 --- Single place that records a window in a workspace.
+--- opts: { floating = bool, frame = {x,y,w,h} }
 --- Returns false if the window is invalid or already tracked.
-function WorkspaceManager:registerWindow(win, wsId, frame)
+function WorkspaceManager:registerWindow(win, wsId, opts)
+    opts = opts or {}
     local winId = safeWindowId(win)
     if not winId or not isValidWorkspace(wsId) then return false end
     if self.windowToWorkspace[winId] then return false end
 
+    local frame = opts.frame
     if frame == nil then
         local ok, f = pcall(function() return win:frame() end)
         frame = ok and f or nil
@@ -83,22 +86,23 @@ function WorkspaceManager:registerWindow(win, wsId, frame)
 
     self.workspaces[wsId].windows[winId] = {
         frame = plainFrame(frame),
-        floating = self.spoon.state.floatingWindows[winId] or false,
+        floating = false,
         seq = self.nextSeq,
     }
     self.nextSeq = self.nextSeq + 1
     self.windowToWorkspace[winId] = wsId
+    self:setFloating(winId, opts.floating)
     return true
 end
 
 --- Add window to current workspace
-function WorkspaceManager:addWindow(win)
-    return self:registerWindow(win, self.current)
+function WorkspaceManager:addWindow(win, floating)
+    return self:registerWindow(win, self.current, { floating = floating })
 end
 
 --- Add window to a specific workspace (for window rules)
-function WorkspaceManager:addWindowToWorkspace(win, targetWsId)
-    if not self:registerWindow(win, targetWsId) then return false end
+function WorkspaceManager:addWindowToWorkspace(win, targetWsId, floating)
+    if not self:registerWindow(win, targetWsId, { floating = floating }) then return false end
 
     -- If not current workspace, hide the window
     if targetWsId ~= self.current then
@@ -125,17 +129,31 @@ function WorkspaceManager:removeWindow(winId)
     return true
 end
 
---- Keep the per-workspace floating flag in sync with the global floating set
-function WorkspaceManager:setFloating(winId, floating)
-    if floating then
-        self.spoon.state.floatingWindows[winId] = true
-    else
-        self.spoon.state.floatingWindows[winId] = nil
-    end
+--- The only place that changes a window's floating state, so the two copies of it never disagree.
+--- `manual` marks a user decision, which rules won't override afterwards.
+function WorkspaceManager:setFloating(winId, floating, manual)
+    self.spoon.state.floatingWindows[winId] = floating and true or nil
 
     local wsId = self.windowToWorkspace[winId]
     local data = wsId and self.workspaces[wsId].windows[winId]
-    if data then data.floating = floating and true or false end
+    if data then
+        data.floating = floating and true or false
+        if manual then data.manual = true end
+    end
+end
+
+function WorkspaceManager:isManuallyFloated(winId)
+    local wsId = self.windowToWorkspace[winId]
+    local data = wsId and self.workspaces[wsId].windows[winId]
+    return data and data.manual or false
+end
+
+--- Tracked in the current workspace and tiled (not floating)
+function WorkspaceManager:isTiled(winId)
+    local wsId = self.windowToWorkspace[winId]
+    if wsId ~= self.current then return false end
+    local data = self.workspaces[wsId].windows[winId]
+    return data ~= nil and not data.floating and not self.spoon.state.floatingWindows[winId]
 end
 
 --- Move window to another workspace
@@ -152,13 +170,13 @@ function WorkspaceManager:moveWindowToWorkspace(win, targetWsId, follow)
     local wasFloating = self.spoon.state.floatingWindows[winId] or false
 
     -- Remove from source workspace
-    local seq
+    local seq, manual
     if sourceWsId then
         local sourceWs = self.workspaces[sourceWsId]
         local data = sourceWs.windows[winId]
         if data then
             wasFloating = wasFloating or data.floating
-            seq = data.seq
+            seq, manual = data.seq, data.manual
             sourceWs.windows[winId] = nil
         end
         if sourceWs.focused == winId then sourceWs.focused = nil end
@@ -173,6 +191,7 @@ function WorkspaceManager:moveWindowToWorkspace(win, targetWsId, follow)
     targetWs.windows[winId] = {
         frame = frameOk and plainFrame(frame) or nil,
         floating = wasFloating,
+        manual = manual,
         seq = seq or self.nextSeq,
     }
     if not seq then self.nextSeq = self.nextSeq + 1 end
@@ -243,6 +262,14 @@ end
 function WorkspaceManager:switchToWorkspace(targetWsId, forceRetile)
     if not isValidWorkspace(targetWsId) then return false end
     if targetWsId == self.current then return false end
+
+    if self.spoon.config.debug then
+        local focused = hs.window.focusedWindow()
+        local appOk, app = pcall(function() return focused:application():name() end)
+        print(string.format("[WM switch] ws%d -> ws%d | focused window: %s | caller: %s",
+            self.current, targetWsId, appOk and app or "none",
+            (debug.traceback("", 2):gsub("\n%s*", " <- "):sub(1, 220))))
+    end
 
     local currentWs = self:getCurrentWorkspace()
     local targetWs = self.workspaces[targetWsId]
@@ -324,7 +351,7 @@ function WorkspaceManager:getWindowsForLayout()
     local windows = {}
 
     for _, entry in ipairs(self:collectLiveWindows(ws)) do
-        if not entry.data.floating then
+        if not entry.data.floating and not self.spoon.state.floatingWindows[entry.id] then
             local win = entry.win
             local minOk, isMinimized = pcall(function() return win:isMinimized() end)
             if minOk and not isMinimized then
@@ -364,6 +391,7 @@ function WorkspaceManager:serialize()
             windows[tostring(winId)] = {
                 frame = plainFrame(winData.frame),
                 floating = winData.floating or false,
+                manual = winData.manual or nil,
                 seq = winData.seq,
             }
         end
@@ -401,17 +429,20 @@ function WorkspaceManager:restore(data)
             for idStr, winData in pairs(saved.windows or {}) do
                 local winId = tonumber(idStr)
                 local win = winId and hs.window.get(winId)
-                if win and self.spoon.helpers:isRelevantWindow(win) and not self.windowToWorkspace[winId] then
-                    local seq = tonumber(winData.seq) or self.nextSeq
-                    ws.windows[winId] = {
-                        frame = plainFrame(winData.frame),
-                        floating = winData.floating or false,
-                        seq = seq,
-                    }
-                    self.nextSeq = math.max(self.nextSeq, seq + 1)
-                    self.windowToWorkspace[winId] = i
-                    if winData.floating then self.spoon.state.floatingWindows[winId] = true end
-                    restored = restored + 1
+                if win and not self.windowToWorkspace[winId] then
+                    -- Rules are re-applied so edits to them take effect on reload; a float/tile
+                    -- choice the user made by hand is kept
+                    local result = self.spoon.rules:classify(win)
+                    if result.manage ~= "ignore" then
+                        local seq = tonumber(winData.seq) or self.nextSeq
+                        local floating = result.manage == "float"
+                        if winData.manual then floating = winData.floating or false end
+                        ws.windows[winId] = { frame = plainFrame(winData.frame), floating = false, seq = seq }
+                        self.nextSeq = math.max(self.nextSeq, seq + 1)
+                        self.windowToWorkspace[winId] = i
+                        self:setFloating(winId, floating, winData.manual)
+                        restored = restored + 1
+                    end
                 end
             end
 
@@ -433,24 +464,33 @@ function WorkspaceManager:restore(data)
     return restored > 0
 end
 
---- Adopt windows we don't know about into the current workspace (anything restored keeps its workspace)
+--- Adopt windows we don't know about, as decided by the rules (anything restored keeps its workspace)
 function WorkspaceManager:syncExistingWindows()
     local screen = hs.screen.mainScreen()
     local sf = screen and screen:frame()
 
     for _, win in ipairs(hs.window.allWindows()) do
         local winId = safeWindowId(win)
-        if winId and not self.windowToWorkspace[winId] and self.spoon.helpers:isRelevantWindow(win) then
-            local ok, frame = pcall(function() return win:frame() end)
-            frame = ok and frame or nil
+        if winId and not self.windowToWorkspace[winId] then
+            local result = self.spoon.rules:classify(win)
+            if result.manage ~= "ignore" then
+                local ok, frame = pcall(function() return win:frame() end)
+                frame = ok and frame or nil
 
-            -- A window parked off-screen by a previous session that we can't place: bring it back
-            if frame and sf and frame.x >= sf.x + sf.w - 2 and frame.y >= sf.y + sf.h - 2 then
-                frame = { x = sf.x + sf.w * 0.2, y = sf.y + sf.h * 0.2, w = sf.w * 0.6, h = sf.h * 0.6 }
-                pcall(function() win:setFrame(frame) end)
+                -- A window parked off-screen by a previous session that we can't place: bring it back
+                if frame and sf and frame.x >= sf.x + sf.w - 2 and frame.y >= sf.y + sf.h - 2 then
+                    frame = { x = sf.x + sf.w * 0.2, y = sf.y + sf.h * 0.2, w = sf.w * 0.6, h = sf.h * 0.6 }
+                    pcall(function() win:setFrame(frame) end)
+                end
+
+                local floating = result.manage == "float"
+                local target = result.workspace
+                if target and target ~= self.current then
+                    self:addWindowToWorkspace(win, target, floating)
+                else
+                    self:registerWindow(win, self.current, { floating = floating, frame = frame or false })
+                end
             end
-
-            self:registerWindow(win, self.current, frame or false)
         end
     end
 end

@@ -127,7 +127,7 @@ function API:bindHotkeys(mapping)
 end
 
 -- Workspace management
-function API:focusWorkspace(id)
+function API:focusWorkspace(id, silent)
     local wm = self.spoon.workspaceManager
     if not wm then
         self.spoon.core:showAlert("No workspace manager")
@@ -142,10 +142,12 @@ function API:focusWorkspace(id)
 
     -- Set flag to ignore focus events during workspace switch
     self.spoon.state.switchingWorkspace = true
+    -- Focus events caused by the switch itself must not trigger another switch
+    self.spoon.state.ignoreFocusUntil = hs.timer.secondsSinceEpoch() + 0.5
     local success = wm:switchToWorkspace(id)
     if success then
         local count = wm:getWindowCount() or 0
-        self.spoon.core:showAlert("Workspace " .. id .. " (" .. count .. " windows)")
+        if not silent then self.spoon.core:showAlert("Workspace " .. id .. " (" .. count .. " windows)") end
         -- Don't call updateLayout here - switchToWorkspace already restores window frames
         -- Just sync the window list for the new workspace
         local windows = wm:getWindowsForLayout()
@@ -176,6 +178,7 @@ function API:moveToWorkspace(id, follow)
     -- Set flag to prevent focus events from switching workspace back
     if follow then
         self.spoon.state.switchingWorkspace = true
+        self.spoon.state.ignoreFocusUntil = hs.timer.secondsSinceEpoch() + 0.5
     end
 
     local success = wm:moveWindowToWorkspace(win, id, follow)
@@ -208,9 +211,16 @@ function API:start()
     if self.started then self:stop() end
     self.started = true
     self.subscriptions = {}
-    self.floatingFilters = {}
 
-    local windowFilter = hs.window.filter.default
+    -- hs.window.filter.default silently drops whole categories of apps before we ever see them.
+    -- Use our own filter instead: every visible window of a role we can manage gets through, and
+    -- rules decide what happens to each one. Other roles (popups, menus, banners, alerts) are never
+    -- managed, so letting them through would only generate events and relayouts.
+    local windowFilter = hs.window.filter.new(true):setDefaultFilter({
+        visible = true,
+        allowRoles = { "AXStandardWindow", "AXDialog", "AXSystemDialog", "AXFloatingWindow" },
+    })
+    self.windowFilter = windowFilter
     local function subscribe(event, fn)
         windowFilter:subscribe(event, fn)
         table.insert(self.subscriptions, { event = event, fn = fn })
@@ -245,35 +255,80 @@ function API:start()
     end
     spoon.state.pendingWorkspaces = nil
 
-    -- Window created - add to current workspace
-    subscribe(hs.window.filter.windowCreated, function(win)
-        if win and spoon.helpers:isRelevantWindow(win) then
-            -- Check window rules for auto-assignment
-            local targetWorkspace = nil
-            if spoon.config.windowRules then
-                local app = win:application()
-                local appName = app and app:name() or ""
-                local rule = spoon.config.windowRules[appName]
-                if rule then
-                    if rule.workspace then
-                        targetWorkspace = rule.workspace
-                    end
-                    if rule.floating then
-                        spoon.state.floatingWindows[win:id()] = true
-                    end
-                end
-            end
+    -- Apply the rules to a window: track it (tiled or floating), move it to a workspace, or ignore it.
+    -- Also used to re-check shortly after creation, when title/subrole/buttons often aren't final yet.
+    local function processWindow(win, isRecheck)
+        local winId = spoon.helpers:getWindowId(win)
+        if not winId or not wm then return end
 
-            if wm then
-                if targetWorkspace and targetWorkspace ~= wm.current then
-                    -- Add to target workspace instead of current
-                    wm:addWindowToWorkspace(win, targetWorkspace)
-                else
-                    wm:addWindow(win)
+        -- A float/tile choice made by hand always wins over rules
+        if isRecheck and wm:isManuallyFloated(winId) then return end
+
+        local result = spoon.rules:classify(win)
+        local before = wm.windowToWorkspace[winId] and (spoon.state.floatingWindows[winId] and "float" or "tile") or "ignore"
+        if spoon.config.debug and (not isRecheck or before ~= result.manage) then
+            -- Only cheap lookups here: describe() would query the accessibility tree for every window
+            local appOk, appName = pcall(function() return win:application():name() end)
+            local titleOk, title = pcall(function() return win:title() end)
+            local roleOk, subrole = pcall(function() return win:subrole() end)
+            print(string.format("[WM rules] %s | %q | subrole=%s -> %s (%s)%s",
+                appOk and appName or "?", titleOk and title or "?", roleOk and tostring(subrole) or "?",
+                result.manage, tostring(result.rule or "no rule"), isRecheck and " [recheck]" or ""))
+        end
+
+        local tracked = wm.windowToWorkspace[winId]
+
+        if result.manage == "ignore" then
+            if tracked then
+                wm:removeWindow(winId)
+                spoon.state.floatingWindows[winId] = nil
+                updateLayout("windowIgnored")
+            end
+            return
+        end
+
+        local floating = result.manage == "float"
+        if not tracked then
+            if result.workspace and result.workspace ~= wm.current then
+                wm:addWindowToWorkspace(win, result.workspace, floating)
+            else
+                wm:addWindow(win, floating)
+            end
+        elseif (spoon.state.floatingWindows[winId] or false) ~= floating then
+            wm:setFloating(winId, floating)
+        end
+
+        -- Geometry only makes sense for floating windows; tiled ones are placed by the layout
+        if floating and not isRecheck then
+            local ok, frame = pcall(function() return win:frame() end)
+            local screen = hs.screen.mainScreen()
+            if ok and frame and screen then
+                local new = { x = frame.x, y = frame.y, w = frame.w, h = frame.h }
+                if result.dimensions then new.w, new.h = result.dimensions[1], result.dimensions[2] end
+                if result.position then new.x, new.y = result.position[1], result.position[2] end
+                if result.center then
+                    local sf = screen:frame()
+                    new.x, new.y = sf.x + (sf.w - new.w) / 2, sf.y + (sf.h - new.h) / 2
+                end
+                if result.dimensions or result.position or result.center then
+                    pcall(function() win:setFrame(new) end)
                 end
             end
-            updateLayout("windowCreated")
         end
+
+        updateLayout(isRecheck and "windowRecheck" or "windowCreated")
+    end
+
+    subscribe(hs.window.filter.windowCreated, function(win)
+        if not win then return end
+        processWindow(win, false)
+
+        -- Titles, subroles and buttons are often not final at creation: look again once things settle
+        local winId = spoon.helpers:getWindowId(win)
+        hs.timer.doAfter(spoon.config.timing.ruleRecheckDelay or 0.4, function()
+            local live = winId and hs.window.get(winId)
+            if live then processWindow(live, true) end
+        end)
     end)
 
     -- Window destroyed - remove from workspace
@@ -305,15 +360,20 @@ function API:start()
         local winId = spoon.helpers:getWindowId(win)
         if not winId then return end
 
+        -- Hammerspoon's own alerts/canvases are windows too: never let them drive workspace switches
+        local ownOk, ownApp = pcall(function() return win:application():bundleID() == hs.processInfo.bundleID end)
+        if ownOk and ownApp then return end
+
         -- Skip focus handling during workspace switching or right after minimize
         if spoon.state.switchingWorkspace or spoon.state.justMinimized or spoon.state.rotatingStack then return end
+        if hs.timer.secondsSinceEpoch() < (spoon.state.ignoreFocusUntil or 0) then return end
 
         -- Focusing a window that lives in another workspace (Dock click, Cmd+Tab) switches to it.
         -- This must come before the de-duplication below, or re-focusing the same window never switches.
         local targetWs = wm and wm.windowToWorkspace[winId]
         if targetWs and targetWs ~= wm.current then
             wm.workspaces[targetWs].focused = winId -- Land on the window the user asked for
-            self:focusWorkspace(targetWs)
+            self:focusWorkspace(targetWs, true) -- Silent: this isn't a keypress, so no alert
             lastFocusedWinId = winId
             return
         end
@@ -479,44 +539,6 @@ function API:start()
         end)
     end):start()
 
-    -- Dialog and system window filters
-    local function setupFloatingFilter(appFilters, allowRoles)
-        local filter = hs.window.filter.new(false)
-        table.insert(self.floatingFilters, filter)
-        if allowRoles then
-            filter:setAppFilter(".*", { allowRoles = allowRoles })
-        else
-            for app, enabled in pairs(appFilters) do
-                filter:setAppFilter(app, enabled)
-            end
-        end
-
-        filter:subscribe(hs.window.filter.windowCreated, function(win)
-            if win then
-                spoon.state.floatingWindows[win:id()] = true
-                if allowRoles then -- Center dialogs
-                    local frame, screen = win:frame(), hs.screen.mainScreen():frame()
-                    frame.x = screen.x + (screen.w - frame.w) / 2
-                    frame.y = screen.y + (screen.h - frame.h) / 2
-                    win:setFrame(frame)
-                end
-            end
-        end)
-    end
-
-    -- Setup dialog filter (for AXDialog role windows)
-    setupFloatingFilter(nil, { "AXDialog", "AXSheet" })
-
-    -- Setup system apps filter
-    setupFloatingFilter({
-        ["System Preferences"] = true,
-        ["System Settings"] = true,
-        ["Activity Monitor"] = true,
-        ["Console"] = true,
-        ["Disk Utility"] = true,
-        ["Keychain Access"] = true
-    })
-
     -- Initial setup
     hs.timer.doAfter(spoon.config.timing.initialSetupDelay, function()
         -- Sync existing windows to workspace 1
@@ -531,15 +553,11 @@ function API:start()
     return spoon
 end
 
-function API:setExcludedApps(appList)
-    self.spoon.config.excludedApps = {}
-    if type(appList) == "table" then
-        for k, v in pairs(appList) do
-            local key, val = type(k) == "number" and v or k, type(k) == "number" and true or v
-            self.spoon.config.excludedApps[key] = val
-            self.spoon.config.excludedApps[string.lower(key)] = val
-        end
-    end
+--- Append a window rule (see rules.lua for the format)
+function API:addRule(rule)
+    local rules = self.spoon.config.rules
+    rules[#rules + 1] = rule
+    self.spoon.rules:invalidate()
     return self.spoon
 end
 
@@ -563,7 +581,8 @@ function API:validateConfig(config)
             layoutUpdateDelay = 0.08,
             spaceChangeDelay = 0.12,
             initialSetupDelay = 0.15,
-            windowLockDuration = 0.4
+            windowLockDuration = 0.4,
+            ruleRecheckDelay = 0.4
         }
         for field, defaultVal in pairs(timingDefaults) do
             if timing[field] ~= nil and (type(timing[field]) ~= "number" or timing[field] < 0) then
@@ -573,10 +592,12 @@ function API:validateConfig(config)
         end
     end
 
-    -- Validate excludedApps
-    if config.excludedApps ~= nil and type(config.excludedApps) ~= "table" then
-        table.insert(warnings, "excludedApps must be a table, ignoring")
-        config.excludedApps = nil
+    -- Validate rules (individual rules are checked when compiled)
+    for _, key in ipairs({ "rules", "defaultRules" }) do
+        if config[key] ~= nil and type(config[key]) ~= "table" then
+            table.insert(warnings, key .. " must be a list of rule tables, ignoring")
+            config[key] = nil
+        end
     end
 
     -- Validate modeColors
@@ -584,28 +605,6 @@ function API:validateConfig(config)
         for mode, color in pairs(config.modeColors) do
             if type(color) ~= "string" and type(color) ~= "table" then
                 table.insert(errors, "modeColors." .. mode .. " must be a hex string or color table")
-            end
-        end
-    end
-
-    -- Validate windowRules
-    if config.windowRules then
-        if type(config.windowRules) ~= "table" then
-            table.insert(warnings, "windowRules must be a table, ignoring")
-            config.windowRules = nil
-        else
-            local rulesToRemove = {}
-            for app, rule in pairs(config.windowRules) do
-                if type(rule) ~= "table" then
-                    table.insert(warnings, "windowRules." .. app .. " must be a table, ignoring")
-                    table.insert(rulesToRemove, app)
-                elseif rule.workspace and (type(rule.workspace) ~= "number" or rule.workspace < 1 or rule.workspace > 9) then
-                    table.insert(warnings, "windowRules." .. app .. ".workspace must be 1-9, ignoring workspace")
-                    rule.workspace = nil
-                end
-            end
-            for _, app in ipairs(rulesToRemove) do
-                config.windowRules[app] = nil
             end
         end
     end
@@ -632,15 +631,10 @@ function API:configure(config)
     self:validateConfig(config)
 
     for k, v in pairs(config) do
-        if k == "excludedApps" then
-            self:setExcludedApps(v)
-        elseif k == "windowRules" then
-            self.spoon.config.windowRules = v
-        else
-            self.spoon.config[k] = v
-        end
+        self.spoon.config[k] = v
     end
     self.spoon:processColors()
+    self.spoon.rules:invalidate() -- Rebuild (and report problems in) the rule list
     return self.spoon
 end
 
@@ -675,15 +669,13 @@ end
 function API:stop()
     local spoon = self.spoon
 
-    for _, sub in ipairs(self.subscriptions or {}) do
-        pcall(function() hs.window.filter.default:unsubscribe(sub.fn) end)
-    end
     self.subscriptions = {}
 
-    for _, filter in ipairs(self.floatingFilters or {}) do
-        pcall(function() filter:unsubscribeAll() end)
+    if self.windowFilter then
+        pcall(function() self.windowFilter:unsubscribeAll() end)
+        pcall(function() self.windowFilter:delete() end)
+        self.windowFilter = nil
     end
-    self.floatingFilters = {}
 
     for _, name in ipairs({ "dragTap", "dragEndTap" }) do
         if spoon[name] then

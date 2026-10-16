@@ -6,25 +6,44 @@ obj.__index = obj
 obj.config = {
     debug = false, -- Enable debug logging
     gap = 8,
-    excludedApps = {},
-    statusKeywords = { "status", "copy", "progress", "loading", "downloading" },
-    settingsKeywords = {
-        -- English
-        "settings", "preferences", "prefs", "options", "configuration", "config",
-        "setup", "properties", "about", "inspector", "info", "information",
-        -- App-specific patterns
-        "preference", "setting", "option", "configure", "account", "profile",
-        "general", "advanced", "privacy", "security", "network", "display",
-        -- Other languages
-        "préférences", "einstellungen", "configuración", "impostazioni", "設定", "环境设置"
+
+    -- Window rules (see rules.lua). Rules are applied in order and later ones win, so `rules`
+    -- (yours, set via configure) can override anything in `defaultRules`.
+    -- Set `defaultRules = {}` in configure() to start from a clean slate.
+    defaultRules = {
+        -- Only real windows are ever managed. Everything else (notification banners, popups, sheets,
+        -- tooltips, Hammerspoon's own alerts, windows without a subrole, ...) is ignored. A later
+        -- rule can only re-enable a window by matching its subrole.
+        { action = "ignore" },
+        { subrole = "StandardWindow",             action = "tile" },
+        { subrole = { "Dialog", "SystemDialog" }, action = "float",           center = true },
+        { subrole = "FloatingWindow",             action = "float" },
+
+        -- Standard windows without a fullscreen button are fixed-size panels (settings, progress, ...)
+        { subrole = "StandardWindow",             fullscreen_button = "none", action = "float" },
+
+        -- Settings windows
+        {
+            subrole = "StandardWindow",
+            title = { "Settings", "Preferences", "Settings…", "Preferences…", "* Settings", "* Preferences" },
+            action = "float"
+        },
+
+        -- Utility apps that make no sense tiled
+        {
+            subrole = "StandardWindow",
+            app_name = { "System Settings", "System Preferences", "Activity Monitor", "Console",
+                "Disk Utility", "Keychain Access", "Calculator" },
+            action = "float"
+        },
+        { subrole = "StandardWindow", app_id = "org.hammerspoon.Hammerspoon", action = "float" },
     },
+    rules = {},
     usePerSpaceLayouts = true,
 
     -- Consolidated sub-configs
     resizing = { step = 0.05, minRatio = 0.15, maxRatio = 0.85 },
-    timing = { layoutUpdateDelay = 0.08, spaceChangeDelay = 0.12, initialSetupDelay = 0.15, windowLockDuration = 0.4 },
-    smallWindowThreshold = { width = 450, height = 320 },
-    keywordWindowMaxSize = { width = 1000, height = 700 }, -- Title keywords only float windows smaller than this
+    timing = { layoutUpdateDelay = 0.08, spaceChangeDelay = 0.12, initialSetupDelay = 0.15, windowLockDuration = 0.4, ruleRecheckDelay = 0.4 },
     focusedWindowIndicator = { width = 50, height = 4, opacity = 0.9, borderRadius = 2 },
     stackIndicators = { enabled = true, position = "bottomLeft", width = 40, height = 5, spacing = 5, maxIndicators = 10, borderRadius = 2.5 },
     alerts = {
@@ -89,6 +108,7 @@ local Helpers = dofile(hs.spoons.resourcePath("helpers.lua"))
 local API = dofile(hs.spoons.resourcePath("api.lua"))
 local WorkspaceManager = dofile(hs.spoons.resourcePath("workspace_manager.lua"))
 local Layouts = dofile(hs.spoons.resourcePath("layouts.lua"))
+local Rules = dofile(hs.spoons.resourcePath("rules.lua"))
 local Menubar = dofile(hs.spoons.resourcePath("menubar.lua"))
 
 function obj:hexToColor(hex, alpha)
@@ -126,6 +146,7 @@ function obj:init()
 
     -- Initialize modules
     self.helpers = Helpers:new(self)
+    self.rules = Rules:new(self)
     self.ui = UI:new(self)
     self.core = Core:new(self)
     self.api = API:new(self)
@@ -229,14 +250,7 @@ function obj:restoreWindowOrderForCurrentSpace()
 
     local savedOrder = self.state.spaceWindowOrder[orderKey]
 
-    -- Get windows from workspace manager if available, otherwise fallback
-    local currentWindows
-    local wm = self.workspaceManager
-    if wm then
-        currentWindows = wm:getWindowsForLayout()
-    else
-        currentWindows = self.helpers:getRelevantWindows()
-    end
+    local currentWindows = self.workspaceManager:getWindowsForLayout()
 
     if #currentWindows == 0 then return false end
 
@@ -401,10 +415,8 @@ function obj:writeSettings()
         -- Config (only user-modifiable parts)
         config = {
             usePerSpaceLayouts = self.config.usePerSpaceLayouts,
-            settingsKeywords = self.config.settingsKeywords,
             resizing = self.config.resizing,
             timing = self.config.timing,
-            smallWindowThreshold = self.config.smallWindowThreshold,
             focusedWindowIndicator = self.config.focusedWindowIndicator,
             alerts = self.config.alerts,
             stackIndicators = self.config.stackIndicators
@@ -440,6 +452,10 @@ end
 -- API delegation methods
 function obj:configure(config)
     return self.api:configure(config)
+end
+
+function obj:addRule(rule)
+    return self.api:addRule(rule)
 end
 
 function obj:bindHotkeys(mapping)
