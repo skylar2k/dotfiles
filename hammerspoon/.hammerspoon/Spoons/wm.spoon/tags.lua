@@ -104,8 +104,14 @@ function Tags:viewMask()
     return self.tagset[self.seltags]
 end
 
+-- dwm's ISVISIBLE, plus the scratchpad: a sticky window is visible whatever the view, and a dismissed
+-- scratchpad is not visible at all
+local function shows(c, mask)
+    return not c.hidden and (c.sticky or c.tags & mask ~= 0)
+end
+
 function Tags:isVisible(c)
-    return c.tags & self.tagset[self.seltags] ~= 0
+    return shows(c, self.tagset[self.seltags])
 end
 
 --- Settings of the current tag
@@ -272,6 +278,15 @@ function Tags:toggleWindowTag(winId, mask)
     return true
 end
 
+--- dwm sticky patch: a sticky window is visible on all tags, but keeps the tags it really has, so
+--- toggling it off puts it back where it came from. Returns the new state, or nil for unknown windows.
+function Tags:toggleSticky(winId)
+    local c = self.clients[winId]
+    if not c then return nil end
+    c.sticky = not c.sticky
+    return c.sticky
+end
+
 --- Zoom: a window temporarily fills the screen. Layout state is untouched, so un-zooming puts every
 --- window back exactly where it was. Only one window is zoomed per view.
 function Tags:setZoomed(winId, zoomed)
@@ -281,7 +296,7 @@ function Tags:setZoomed(winId, zoomed)
     if zoomed then
         local view = self:viewMask()
         for _, other in pairs(self.clients) do
-            if other ~= c and other.zoomed and other.tags & view ~= 0 then self:setZoomed(other.id, false) end
+            if other ~= c and other.zoomed and shows(other, view) then self:setZoomed(other.id, false) end
         end
         if not c.zoomed then
             local ok, frame = pcall(c.win.frame, c.win)
@@ -302,11 +317,55 @@ function Tags:getZoomed()
     local view = self:viewMask()
     local best
     for _, c in pairs(self.clients) do
-        if c.zoomed and c.tags & view ~= 0 and not c.minimized and (not best or c.focusSeq > best.focusSeq) then
+        if c.zoomed and shows(c, view) and not c.minimized and (not best or c.focusSeq > best.focusSeq) then
             best = c
         end
     end
     if best and alive(best) then return best end
+end
+
+--- Scratchpad (like dwm's scratchpad patch): one floating window you summon to the current view and
+--- dismiss again. It is not tied to any tag: summoning it moves it to the tags in view.
+function Tags:setScratchpad(winId)
+    local c = self.clients[winId]
+    if not c then return false end
+    for _, other in pairs(self.clients) do other.scratch = false end -- Only one at a time
+    c.scratch = true
+    c.floating = true
+    return true
+end
+
+function Tags:getScratchpad()
+    for _, c in pairs(self.clients) do
+        if c.scratch and alive(c) then return c end
+    end
+end
+
+--- Where the scratchpad appears: centered, config.scratchpad.width/height of the screen
+function Tags:scratchFrame()
+    local screen = hs.screen.mainScreen()
+    if not screen then return nil end
+    local f, config = screen:frame(), self.spoon.config.scratchpad or {}
+    local w, h = f.w * (config.width or 0.6), f.h * (config.height or 0.6)
+    return { x = f.x + (f.w - w) / 2, y = f.y + (f.h - h) / 2, w = w, h = h }
+end
+
+--- Dismiss the scratchpad if it is showing, otherwise summon it to the current view.
+--- Returns "hidden", "shown", or nil when there is no scratchpad window.
+function Tags:toggleScratchpad()
+    local c = self:getScratchpad()
+    if not c then return nil end
+
+    if self:isVisible(c) then
+        c.hidden = true
+        return "hidden"
+    end
+
+    c.hidden = false
+    c.tags = self:viewMask()
+    c.frame = self:scratchFrame() -- Applied when the window is brought back from its parking spot
+    self:noteFocus(c.id)
+    return "shown"
 end
 
 function Tags:noteFocus(winId)
@@ -327,7 +386,7 @@ function Tags:getVisibleTiled()
     local view = self:viewMask()
     local list = {}
     for _, c in pairs(self.clients) do
-        if c.tags & view ~= 0 and not c.floating and not c.minimized and alive(c) then
+        if shows(c, view) and not c.floating and not c.minimized and alive(c) then
             list[#list + 1] = c
         end
     end
@@ -341,19 +400,18 @@ function Tags:getVisibleFloating()
     local view = self:viewMask()
     local list = {}
     for _, c in pairs(self.clients) do
-        if c.tags & view ~= 0 and c.floating and not c.minimized and alive(c) then
+        if shows(c, view) and c.floating and not c.minimized and alive(c) then
             list[#list + 1] = c.win
         end
     end
     return list
 end
 
---- Number of windows carrying a tag (or in view when no tag is given)
+--- Number of windows carrying a tag, or showing in the current view when no tag is given
 function Tags:count(tag)
-    local mask = tag and Tags.bit(tag) or self:viewMask()
-    local n = 0
+    local view, bit, n = self:viewMask(), tag and Tags.bit(tag), 0
     for _, c in pairs(self.clients) do
-        if c.tags & mask ~= 0 then n = n + 1 end
+        if (bit and c.tags & bit ~= 0) or (not bit and shows(c, view)) then n = n + 1 end
     end
     return n
 end
@@ -415,7 +473,7 @@ function Tags:applyVisibility()
     local view = self:viewMask()
     local hidden = {}
     for _, c in pairs(self.clients) do
-        if c.tags & view ~= 0 then
+        if shows(c, view) then
             self:show(c)
         else
             hidden[#hidden + 1] = c
@@ -432,7 +490,7 @@ function Tags:focusCurrent()
     local view = self:viewMask()
     local best
     for _, c in pairs(self.clients) do
-        if c.tags & view ~= 0 and not c.minimized then
+        if shows(c, view) and not c.minimized then
             if not best or c.focusSeq > best.focusSeq or (c.focusSeq == best.focusSeq and c.seq < best.seq) then
                 best = c
             end
@@ -472,6 +530,9 @@ function Tags:serialize()
             tags = c.tags,
             floating = c.floating,
             manual = c.manual or nil,
+            scratch = c.scratch or nil,
+            hidden = c.hidden or nil,
+            sticky = c.sticky or nil,
             seq = c.seq,
             focusSeq = c.focusSeq,
             frame = c.frame,
@@ -537,12 +598,15 @@ function Tags:restore(data)
             if result.manage ~= "ignore" then
                 local floating = result.manage == "float"
                 if saved.manual then floating = saved.floating or false end
-                local c = self:register(win, validMask(saved.tags) or view, { floating = floating, frame = saved.frame })
+                local c = self:register(win, validMask(saved.tags) or self:viewMask(), { floating = floating, frame = saved.frame })
                 if c then
                     c.manual = saved.manual or false
+                    c.scratch = saved.scratch or false
+                    c.hidden = saved.hidden or false
+                    c.sticky = saved.sticky or false
                     c.seq = tonumber(saved.seq) or c.seq
                     c.focusSeq = tonumber(saved.focusSeq) or 0
-                    c.parked = c.tags & view == 0 -- Windows outside the view were parked when we last ran
+                    c.parked = not shows(c, view) -- Windows outside the view were parked when we last ran
                     self.tailSeq = math.max(self.tailSeq, c.seq + 1)
                     self.headSeq = math.min(self.headSeq, c.seq - 1)
                     self.focusCounter = math.max(self.focusCounter, c.focusSeq)
@@ -577,9 +641,9 @@ function Tags:syncExisting()
                 end
 
                 -- Windows that were already open keep the order the system lists them in
-                local c = self:register(win, result.tags or view,
+                local c = self:register(win, result.tags or self:viewMask(),
                     { floating = result.manage == "float", frame = frame, attach = "last" })
-                if c and c.tags & view == 0 then self:hide(c) end
+                if c and not shows(c, view) then self:hide(c) end
             end
         end
     end

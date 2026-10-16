@@ -93,6 +93,12 @@ function API:bindHotkeys(mapping)
         -- dwm killclient
         killClient = function() core:killClient() end,
 
+        -- dwm sticky patch: the focused window is visible on all tags (toggle)
+        toggleSticky = function() self:toggleSticky() end,
+
+        -- Scratchpad: summon the floating scratchpad window here, or dismiss it
+        toggleScratchpad = function() self:toggleScratchpad() end,
+
         -- Layout info
         showLayoutInfo = function() core:showLayoutInfo() end,
         showWindowInfo = function() core:showWindowInfo() end,
@@ -171,7 +177,47 @@ function API:spawn(command)
         return false
     end
     self.tasks[task] = true -- Keep a reference while it runs
+
+    -- Whatever window this brings up gets focus (and its tags are shown if they weren't)
+    spoon.state.focusNewUntil = hs.timer.secondsSinceEpoch() + (spoon.config.spawnFocusTimeout or 5)
     return true
+end
+
+--- dwm sticky patch: make the focused window visible on all tags, or send it back to its own tags
+function API:toggleSticky()
+    local spoon = self.spoon
+    local win, winId = spoon.core:getFocusedWindow()
+    local sticky = win and spoon.tags:toggleSticky(winId)
+    if sticky == nil then
+        spoon.core:showAlert("No managed window focused")
+        return
+    end
+
+    spoon.core:showAlert(sticky and "Sticky: on all tags" or ("Back on " .. self:describeTags(winId)))
+    self:refreshView()
+end
+
+--- Summon the scratchpad window to the tags in view, or dismiss it if it is showing here.
+--- With no scratchpad window yet, run config.commands.scratchpad to create one.
+function API:toggleScratchpad()
+    local spoon = self.spoon
+    local tags = spoon.tags
+
+    local action = tags:toggleScratchpad()
+    if not action then
+        if spoon.config.commands.scratchpad then
+            self:spawn("scratchpad")
+        else
+            spoon.core:showAlert("No scratchpad: add commands.scratchpad and a rule with scratchpad = true")
+        end
+        return
+    end
+
+    self:refreshView() -- Parks or shows it, retiles, and focuses the most recently used window in view
+    if action == "shown" then
+        local c = tags:getScratchpad()
+        if c then pcall(c.win.raise, c.win) end
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -361,7 +407,8 @@ function API:start()
         end
 
         local floating = result.manage == "float"
-        if not client then
+        local isNew = client == nil
+        if isNew then
             client = tags:register(win, result.tags, { floating = floating })
             if not client then return end
             -- A rule can send a window to tags that aren't in view: park it right away
@@ -370,8 +417,27 @@ function API:start()
             tags:setFloating(winId, floating)
         end
 
+        -- The scratchpad appears centered, sized as configured (its title often arrives late: this
+        -- also runs on the recheck)
+        if result.scratchpad and not client.scratch then
+            tags:setScratchpad(winId)
+            local frame = tags:scratchFrame()
+            if frame then pcall(win.setFrame, win, frame) end
+        end
+
+        -- A window brought up by spawn gets focus; if it lives on tags that aren't in view, the
+        -- focus handler then shows them
+        if isNew and spoon.state.focusNewUntil then
+            local pending = hs.timer.secondsSinceEpoch() < spoon.state.focusNewUntil
+            spoon.state.focusNewUntil = nil
+            if pending then
+                tags:noteFocus(winId)
+                pcall(win.focus, win)
+            end
+        end
+
         -- Geometry only makes sense for floating windows; tiled ones are placed by the layout
-        if floating and not isRecheck then
+        if floating and not isRecheck and not result.scratchpad then
             local ok, frame = pcall(function() return win:frame() end)
             local screen = hs.screen.mainScreen()
             if ok and frame and screen and (result.dimensions or result.position or result.center) then
@@ -446,6 +512,13 @@ function API:start()
 
         -- Skip focus handling during view changes, right after minimize and while the stack rotates
         if spoon.state.viewChanging or spoon.state.justMinimized or spoon.state.rotatingStack then return end
+
+        -- A dismissed scratchpad is parked: if macOS hands it focus, move focus somewhere visible
+        -- instead of following it (summon it with its key)
+        if client.hidden then
+            tags:focusCurrent()
+            return
+        end
 
         -- Focusing a window that is not in view (Dock click, Cmd+Tab, Spotlight) shows its tags, like
         -- dwm's focusonnetactive. Silent: this isn't a keypress, so no alert.
@@ -636,6 +709,21 @@ function API:validateConfig(config)
     if config.newWindow ~= nil and config.newWindow ~= "master" and config.newWindow ~= "last" then
         table.insert(warnings, 'newWindow must be "master" or "last", using "master"')
         config.newWindow = "master"
+    end
+    if config.spawnFocusTimeout ~= nil and (type(config.spawnFocusTimeout) ~= "number" or config.spawnFocusTimeout < 0) then
+        table.insert(warnings, "spawnFocusTimeout must be a non-negative number, using 5")
+        config.spawnFocusTimeout = 5
+    end
+    if config.scratchpad ~= nil then
+        local sp = config.scratchpad
+        local ok = type(sp) == "table"
+        for _, key in ipairs({ "width", "height" }) do
+            if ok and sp[key] ~= nil and not (type(sp[key]) == "number" and sp[key] > 0 and sp[key] <= 1) then ok = false end
+        end
+        if not ok then
+            table.insert(warnings, "scratchpad.width/height must be numbers in (0, 1], using 0.6")
+            config.scratchpad = { width = 0.6, height = 0.6 }
+        end
     end
     for _, key in ipairs({ "scroll", "commands" }) do
         if config[key] ~= nil and type(config[key]) ~= "table" then

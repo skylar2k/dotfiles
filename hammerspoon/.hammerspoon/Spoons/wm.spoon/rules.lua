@@ -20,6 +20,7 @@
 --   dimensions = { width, height }             (floating windows only)
 --   position   = { x, y }                      (floating windows only)
 --   center     = true                          (floating windows only)
+--   scratchpad = true                          (this window is the scratchpad: floating, summoned on demand)
 --
 -- Every matching rule is applied in order and later rules override earlier ones, so user rules
 -- (which come after the defaults) can override any default.
@@ -41,7 +42,7 @@ local BUTTON_ORDER = { "fullscreen_button", "close_button", "minimize_button", "
 local BUTTON_STATES = { exists = true, none = true, enabled = true, disabled = true }
 local ACTIONS = { float = true, tile = true, ignore = true }
 
-local KNOWN_KEYS = { action = true, tags = true, dimensions = true, position = true, center = true }
+local KNOWN_KEYS = { action = true, tags = true, scratchpad = true, dimensions = true, position = true, center = true }
 for _, k in ipairs(TEXT_MATCHERS) do KNOWN_KEYS[k] = true end
 for k in pairs(BUTTON_MATCHERS) do KNOWN_KEYS[k] = true end
 
@@ -190,6 +191,9 @@ local function compileRule(rule, label)
     if rule.action ~= nil and not ACTIONS[rule.action] then
         return nil, label .. ": action must be float, tile or ignore"
     end
+    if rule.scratchpad ~= nil and type(rule.scratchpad) ~= "boolean" then
+        return nil, label .. ": scratchpad must be true or false"
+    end
     if rule.tags ~= nil then
         compiled.tagMask = Tags.toMask(rule.tags)
         if not compiled.tagMask then return nil, label .. ": tags must be 1-9 or a list of them" end
@@ -275,9 +279,12 @@ function Rules:classify(win)
             if rule.dimensions then result.dimensions = rule.dimensions end
             if rule.position then result.position = rule.position end
             if rule.center then result.center = true end
+            if rule.scratchpad ~= nil then result.scratchpad = rule.scratchpad end
             result.rule = compiled.label
         end
     end
+
+    if result.scratchpad then result.manage = "float" end -- The scratchpad is always floating
 
     return result
 end

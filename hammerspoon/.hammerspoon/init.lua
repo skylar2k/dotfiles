@@ -15,12 +15,15 @@ wm:configure({
 
     -- Programs for spawn_<name> hotkeys: a shell command, or { program, arg, ... }
     commands = {
-        terminal = "open -na Terminal",
+        terminal = "open -na Ghostty",
+        -- A terminal with a fixed title, which the scratchpad rule below recognizes
+        scratchpad = "open -na Ghostty --args --title=scratchpad",
     },
 
     rules = {
         { app_id = "com.apple.finder",  action = "float" },
         { app_id = "com.apple.Preview", action = "float", dimensions = { 900, 700 }, center = true },
+        { app_id = "com.mitchellh.ghostty", title = "scratchpad", scratchpad = true },
     },
 })
 
@@ -79,6 +82,8 @@ local wm_hotkeys = {
     toggleFloatingWindow = { mods("shift"), "space" },
     toggleZoom = { main, "z" },
     killClient = { mods("shift"), "c" },
+    toggleSticky = { main, "s" },
+    toggleScratchpad = { mods("shift"), "s" },
     spawn_terminal = { mods("shift"), "return" },
 
     -- Floating windows: arrows step through sizes, shift+arrows snap to halves

@@ -333,7 +333,7 @@ function Core:showWindowInfo()
         info.subrole or "none", info.ax_id or "none",
         info.fullscreen_button or "?", info.close_button or "?",
         result.manage, result.rule and (" via " .. result.rule) or "",
-        client and table.concat(self.spoon.tags.list(client.tags), "+") or "-", winId), 6)
+        client and (table.concat(self.spoon.tags.list(client.tags), "+") .. (client.sticky and " (sticky)" or "")) or "-", winId), 6)
 end
 
 function Core:toggleFloatingWindow()

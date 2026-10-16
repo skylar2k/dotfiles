@@ -35,6 +35,8 @@ obj.config = {
     rules = {},
 
     newWindow = "master",       -- Where new windows go: "master" (dwm's attach) or "last"
+    spawnFocusTimeout = 5,      -- Seconds after a spawn in which the next new window gets focus
+    scratchpad = { width = 0.6, height = 0.6 }, -- Size of the scratchpad, as a fraction of the screen
     scroll = { wrap = false },  -- Scrolling past the first/last column wraps around
 
     -- Programs for spawn_<name> hotkeys: a shell command string, or { program, arg, ... }
