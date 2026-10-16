@@ -1,0 +1,873 @@
+-- LaWM Core Functions
+local Core = {}
+Core.__index = Core
+
+function Core:new(spoon) return setmetatable({ spoon = spoon }, self) end
+
+-- Alert Management
+function Core:showAlert(message)
+    if not self.spoon.config.alerts.enabled then return end
+    if self.spoon.state.alertUUID then hs.alert.closeSpecific(self.spoon.state.alertUUID) end
+    local c = self.spoon.config.alerts
+    local cfg = {
+        strokeWidth = c.strokeWidth,
+        fillColor = c.fillColor,
+        textColor = c.textColor,
+        textSize = c.textSize,
+        radius = c.radius,
+        fadeInDuration = c.fadeIn,
+        fadeOutDuration = c.fadeOut
+    }
+    if c.position == "bottom" then cfg.atScreenEdge = 2 end
+    self.spoon.state.alertUUID = hs.alert.show(message, cfg, c.duration)
+end
+
+-- Toggle Tiling On/Off
+function Core:toggleTiling()
+    self.spoon.state.tileEnabled = not self.spoon.state.tileEnabled
+
+    if self.spoon.state.tileEnabled then
+        self:showAlert("Tiling ON")
+        self.spoon.state.layoutChanged = true
+        self:updateLayout(false)
+    else
+        self:showAlert("Tiling OFF")
+        -- Clear UI indicators when tile is off
+        if self.spoon.ui then
+            self.spoon.ui:cleanup()
+        end
+    end
+
+    -- Update menubar
+    if self.spoon.menubar then
+        self.spoon.menubar:update()
+    end
+
+    self.spoon:saveSettings()
+end
+
+-- Check if tile is enabled
+function Core:isTilingEnabled()
+    return self.spoon.state.tileEnabled ~= false
+end
+
+-- Helper Functions
+function Core:getWindowIndex(winId)
+    for i, w in ipairs(self.spoon.state.windows) do if w:id() == winId then return i end end
+end
+
+-- Unified Resize Function (works across all layouts)
+function Core:resizeFocusedWindow(direction)
+    local win = hs.window.focusedWindow()
+    if not win then return end
+
+    local ok, winId = pcall(function() return win:id() end)
+    if not ok or not winId then return end
+
+    -- Skip if window is floating
+    if self.spoon.state.floatingWindows[winId] then return end
+
+    local layout = self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()]
+
+    -- Tiling layout: left/right resizes columns, up/down resizes rows
+    if layout == "tile" then
+        if direction == "left" or direction == "right" then
+            if self.spoon.layoutsModule and self.spoon.layoutsModule:tileResizeColumn(winId, direction) then
+                self:updateLayout(true)
+                self:showAlert("Column resized")
+                self.spoon:saveSettings()
+            end
+        elseif direction == "up" or direction == "down" then
+            if self.spoon.layoutsModule and self.spoon.layoutsModule:tileResizeRow(winId, direction) then
+                self:updateLayout(true)
+                self:showAlert("Row resized")
+                self.spoon:saveSettings()
+            end
+        end
+        return
+    end
+
+    -- Scroll: left/right scrolls viewport
+    if layout == "scroll" then
+        if direction == "left" then
+            self:scrollLeft()
+        elseif direction == "right" then
+            self:scrollRight()
+        end
+        return
+    end
+
+    -- Stacking: resize does nothing for tiled windows
+end
+
+-- Window Management
+function Core:updateLayout(preserveOrder)
+    -- Skip layout if tile is disabled
+    if not self:isTilingEnabled() then
+        return
+    end
+
+    if not self.spoon.state.windows then self.spoon.state.windows = {} end
+    local wm = self.spoon.workspaceManager
+    local windows
+
+    if preserveOrder and #self.spoon.state.windows > 0 then
+        -- Preserve current window order (for rotation/swap)
+        windows = self:validateWindows()
+    elseif wm then
+        -- Get windows from workspace manager
+        windows = wm:getWindowsForLayout()
+    else
+        -- Fallback to all relevant windows
+        windows = self.spoon.helpers:getRelevantWindows()
+    end
+
+    self.spoon.state.windows = windows
+    local screen = self.spoon.helpers:getScreenFrame()
+    local layout = self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()]
+
+    if layout == "tile" and self.spoon.layoutsModule then
+        self.spoon.layoutsModule:layout_tile(screen, windows)
+    elseif layout == "stack" and self.spoon.layoutsModule then
+        self.spoon.layoutsModule:layout_stack(screen, windows)
+    elseif layout == "scroll" and self.spoon.layoutsModule then
+        self.spoon.layoutsModule:layout_scroll(screen, windows)
+    end
+    self:handleFloatingWindows()
+    self.spoon.ui:updateAll()
+    self.spoon:saveWindowOrderForCurrentSpace()
+    self.spoon.state.layoutChanged = false
+end
+
+function Core:validateWindows()
+    local valid, ids = {}, {}
+    local wm = self.spoon.workspaceManager
+
+
+    -- Only get windows from current workspace if workspace manager is active
+    local sourceWindows
+    if wm then
+        sourceWindows = wm:getWindowsForLayout()
+    else
+        sourceWindows = self.spoon.helpers:getRelevantWindows()
+    end
+
+    -- Build lookup table with pcall protection - O(n)
+    for _, w in ipairs(sourceWindows) do
+        local ok, winId = pcall(function() return w:id() end)
+        if ok and winId then
+            ids[winId] = w
+            local app = w:application()
+            local appName = app and app:name() or "?"
+        end
+    end
+
+    -- First pass: preserve order from state.windows - O(n)
+    for _, w in ipairs(self.spoon.state.windows) do
+        local ok, winId = pcall(function() return w:id() end)
+        if ok and winId and ids[winId] then
+            table.insert(valid, ids[winId])
+            ids[winId] = nil -- Mark as used
+        elseif ok and winId then
+        end
+    end
+
+    -- Second pass: add remaining new windows - O(n)
+    for _, w in pairs(ids) do
+        local ok, winId = pcall(function() return w:id() end)
+        if ok and winId then
+        end
+        table.insert(valid, w)
+    end
+
+    return valid
+end
+
+function Core:handleFloatingWindows()
+    local toRemove = {}
+    for id, _ in pairs(self.spoon.state.floatingWindows) do
+        local w = hs.window.get(id)
+        if w then
+            local isRelevant = false
+            pcall(function() isRelevant = self.spoon.helpers:isRelevantWindow(w) end)
+            if isRelevant then
+                pcall(function() w:raise() end)
+            else
+                table.insert(toRemove, id)
+            end
+        else
+            table.insert(toRemove, id)
+        end
+    end
+    -- Remove invalid floating windows after iteration
+    for _, id in ipairs(toRemove) do
+        self.spoon.state.floatingWindows[id] = nil
+    end
+end
+
+-- Balance and Window Operations
+function Core:balanceLayout()
+    local layout = self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()]
+    if layout == "tile" then
+        if self.spoon.layoutsModule then
+            self.spoon.layoutsModule:tileBalance()
+        end
+        self:showAlert("Balanced (60/40)")
+    else
+        self:showAlert("Tiling only"); return
+    end
+    self.spoon.state.layoutChanged = true; self:updateLayout(); self.spoon:saveSettings()
+end
+
+-- Unified Swap Window (works across all tiled layouts)
+function Core:swapWindow(direction)
+    local win = hs.window.focusedWindow()
+    if not win then
+        self:showAlert("No focused window"); return
+    end
+
+    local ok, winId = pcall(function() return win:id() end)
+    if not ok or not winId then return end
+
+    local layout = self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()]
+
+    local windows = self.spoon.state.windows
+    if not windows or #windows < 2 then
+        self:showAlert("Need 2+ windows"); return
+    end
+
+    -- For stack layout: swap is the same as cycle/rotate
+    if layout == "stack" then
+        if direction == "next" or direction == "right" or direction == "down" then
+            self:focusNextWindow()
+        else
+            self:focusPrevWindow()
+        end
+        return
+    end
+
+    local idx = self:getWindowIndex(winId)
+    if not idx then return end
+
+    local targetIdx
+    if direction == "next" or direction == "right" or direction == "down" then
+        targetIdx = idx < #windows and idx + 1 or 1
+    else
+        targetIdx = idx > 1 and idx - 1 or #windows
+    end
+
+    -- Swap windows
+    self.spoon.state.ignoreNextUpdate = true
+    windows[idx], windows[targetIdx] = windows[targetIdx], windows[idx]
+
+    -- For Scroll, also swap columns if each window is in its own column
+    if layout == "scroll" and self.spoon.layoutsModule then
+        local cols = self.spoon.layoutsModule.scrollColumns
+        if cols and idx <= #cols and targetIdx <= #cols then
+            cols[idx], cols[targetIdx] = cols[targetIdx], cols[idx]
+        end
+    end
+
+    -- For Tile, swap windows in tileColumns structure
+    if layout == "tile" and self.spoon.layoutsModule then
+        local cols = self.spoon.layoutsModule.tileColumns
+        if cols then
+            -- After the swap above, windows[idx] now has the target, windows[targetIdx] has the source
+            local srcWinId = winId
+            local targetWinId = windows[idx]:id() -- This is the swapped-in window
+            local srcColIdx, srcRowIdx, targetColIdx, targetRowIdx
+
+            for colIdx, col in ipairs(cols) do
+                for rowIdx, wId in ipairs(col.windows) do
+                    if wId == srcWinId then
+                        srcColIdx, srcRowIdx = colIdx, rowIdx
+                    elseif wId == targetWinId then
+                        targetColIdx, targetRowIdx = colIdx, rowIdx
+                    end
+                end
+            end
+
+            if srcColIdx and targetColIdx then
+                cols[srcColIdx].windows[srcRowIdx] = targetWinId
+                cols[targetColIdx].windows[targetRowIdx] = srcWinId
+            end
+        end
+    end
+
+    self:updateLayout(true)
+    self:showAlert("Swapped")
+    self.spoon:saveWindowOrderForCurrentSpace(); self.spoon:saveSettings()
+    hs.timer.doAfter(self.spoon.config.timing.windowLockDuration,
+        function() self.spoon.state.ignoreNextUpdate = false end)
+end
+
+-- Unified Move to Position (works across all tiled layouts)
+function Core:moveToPosition(pos)
+    local win = hs.window.focusedWindow()
+    if not win then
+        self:showAlert("No focused window"); return
+    end
+
+    local ok, winId = pcall(function() return win:id() end)
+    if not ok or not winId then return end
+
+    -- Skip floating windows
+    if self.spoon.state.floatingWindows[winId] then
+        self:showAlert("Window is floating"); return
+    end
+
+    local layout = self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()]
+
+    local windows = self.spoon.state.windows
+    if #windows == 0 or pos < 1 or pos > #windows then
+        self:showAlert("Invalid position"); return
+    end
+    local idx = self:getWindowIndex(winId)
+    if not idx or idx == pos then
+        self:showAlert("Already at " .. pos); return
+    end
+    self.spoon.state.ignoreNextUpdate = true
+    local reordered, src = {}, 1
+    for i = 1, #windows do
+        if i == pos then
+            reordered[i] = windows[idx]
+        else
+            if src == idx then src = src + 1 end; reordered[i] = windows[src]; src = src + 1
+        end
+    end
+    self.spoon.state.windows = reordered
+
+    -- For Scroll, rebuild columns based on new window order
+    if layout == "scroll" and self.spoon.layoutsModule then
+        local newCols = {}
+        for _, w in ipairs(reordered) do
+            local wOk, wId = pcall(function() return w:id() end)
+            if wOk and wId then
+                table.insert(newCols, { wId })
+            end
+        end
+        self.spoon.layoutsModule.scrollColumns = newCols
+    end
+
+    self:updateLayout(true)
+    self:showAlert("Position " .. pos)
+    self.spoon:saveWindowOrderForCurrentSpace(); self.spoon:saveSettings()
+    hs.timer.doAfter(self.spoon.config.timing.windowLockDuration,
+        function() self.spoon.state.ignoreNextUpdate = false end)
+end
+
+function Core:showWindowInfo()
+    local win = hs.window.focusedWindow()
+    if not win then
+        self:showAlert("No focused window")
+        return
+    end
+
+    local ok, winId = pcall(function() return win:id() end)
+    if not ok or not winId then return end
+
+    local app = win:application()
+    local appName = app and app:name() or "?"
+    local title = win:title() or ""
+    local subrole = win:subrole() or "?"
+    local frame = win:frame()
+    local isFloating = self.spoon.state.floatingWindows[winId] and "yes" or "no"
+    local wm = self.spoon.workspaceManager
+    local wsId = wm and wm.windowToWorkspace[winId] or "?"
+
+    local info = string.format(
+        "%s\n%s\nID: %s | WS: %s\nFloating: %s | Subrole: %s\nSize: %dx%d",
+        appName, #title > 30 and title:sub(1, 27) .. "..." or title,
+        winId, wsId, isFloating, subrole, frame.w, frame.h
+    )
+    hs.alert.show(info, 4)
+end
+
+function Core:toggleFloatingWindow()
+    local win = hs.window.focusedWindow()
+    if not win then return end
+
+    local ok, winId = pcall(function() return win:id() end)
+    if not ok or not winId then return end
+
+    -- Always allow toggling - don't check isRelevantWindow (user override)
+    local isFloating = self.spoon.state.floatingWindows[winId]
+
+    local wm = self.spoon.workspaceManager
+
+    if isFloating then
+        -- Remove from floating state
+        self.spoon.state.floatingWindows[winId] = nil
+        -- Sync with workspace manager
+        if wm then
+            local wsId = wm.windowToWorkspace[winId]
+            if wsId and wm.workspaces[wsId] and wm.workspaces[wsId].windows[winId] then
+                wm.workspaces[wsId].windows[winId].floating = false
+            end
+        end
+        self:showAlert("Tiled")
+    else
+        -- Add to floating state
+        self.spoon.state.floatingWindows[winId] = true
+        -- Sync with workspace manager
+        if wm then
+            local wsId = wm.windowToWorkspace[winId]
+            if wsId and wm.workspaces[wsId] and wm.workspaces[wsId].windows[winId] then
+                wm.workspaces[wsId].windows[winId].floating = true
+            end
+        end
+        -- Center the floating window
+        local frameOk, f = pcall(function() return win:frame() end)
+        local mainScreen = hs.screen.mainScreen()
+        if frameOk and f and mainScreen then
+            local s = mainScreen:frame()
+            pcall(function()
+                win:setFrame({ x = s.x + (s.w - f.w) / 2, y = s.y + (s.h - f.h) / 2, w = f.w, h = f.h })
+            end)
+        end
+        self:showAlert("Floating")
+    end
+
+    self.spoon.state.layoutChanged = true
+    self:updateLayout()
+    self.spoon:saveSettings()
+end
+
+-- Unified Focus Window (works across all layouts)
+function Core:focusNextWindow()
+    self:focusWindowByDirection("next")
+end
+
+function Core:focusPrevWindow()
+    self:focusWindowByDirection("prev")
+end
+
+function Core:focusWindowByDirection(direction)
+    local windows = self.spoon.state.windows
+    if #windows == 0 then return end
+
+
+    local layout = self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()]
+
+    -- For stack layout: always rotate the stack instead of looking up current focus
+    if layout == "stack" then
+        local targetWin
+        if direction == "next" then
+            -- Rotate forward: move position 1 to end, everything shifts up
+            if #windows >= 2 then
+                targetWin = windows[1]
+                table.remove(windows, 1)
+                table.insert(windows, targetWin)
+                -- Now window 2 is at position 1
+                targetWin = windows[1]
+            else
+                targetWin = windows[1]
+            end
+        else
+            -- Rotate backward: move last to position 1
+            targetWin = windows[#windows]
+            table.remove(windows, #windows)
+            table.insert(windows, 1, targetWin)
+        end
+
+        self.spoon.state.windows = windows
+
+        -- Set ignore flags to prevent window events from triggering extra updates
+        self.spoon.state.ignoreNextUpdate = true
+        self.spoon.state.rotatingStack = true
+
+        self:updateLayout(true)
+
+        -- Focus and raise immediately
+        if targetWin then
+            pcall(function()
+                targetWin:focus()
+                targetWin:raise()
+            end)
+        end
+
+        -- Clear ignore flags after a brief delay
+        hs.timer.doAfter(0.2, function()
+            self.spoon.state.ignoreNextUpdate = false
+            self.spoon.state.rotatingStack = false
+        end)
+    else
+        -- For other layouts: find current window and move to next/prev
+        local cur = hs.window.focusedWindow()
+        local idx = 1
+
+        if cur then
+            local ok, curId = pcall(function() return cur:id() end)
+            if ok and curId then
+                local i = self:getWindowIndex(curId)
+                if i then
+                    if direction == "next" then
+                        idx = (i % #windows) + 1
+                    else
+                        idx = i > 1 and (i - 1) or #windows
+                    end
+                end
+            end
+        end
+
+        pcall(function()
+            windows[idx]:focus()
+            windows[idx]:raise()
+        end)
+    end
+
+    self.spoon.ui:updateAll()
+end
+
+-- Floating Window Management
+local FU = {
+    steps = { 1, 0.8, 0.66, 0.5, 0.33, 0.2 },
+    pos = {
+        left = function(s, w) return { x = s.x, y = s.y, w = w, h = s.h } end,
+        right = function(s, w) return { x = s.x + s.w - w, y = s.y, w = w, h = s.h } end,
+        up = function(s, _, h) return { x = s.x, y = s.y, w = s.w, h = h } end,
+        down = function(s, _, h) return { x = s.x, y = s.y + s.h - h, w = s.w, h = h } end,
+        ["up-left"] = function(s, w, h) return { x = s.x, y = s.y, w = w, h = h } end,
+        ["up-right"] = function(s, w, h) return { x = s.x + s.w - w, y = s.y, w = w, h = h } end,
+        ["down-left"] = function(s, w, h) return { x = s.x, y = s.y + s.h - h, w = w, h = h } end,
+        ["down-right"] = function(s, w, h) return { x = s.x + s.w - w, y = s.y + s.h - h, w = w, h = h } end
+    }
+}
+
+-- Check if window can be freely positioned (tile off OR window is floating)
+function Core:isWindowFloating(winId)
+    return not self:isTilingEnabled() or self.spoon.state.floatingWindows[winId]
+end
+
+-- Helper to apply floating position (DRY pattern)
+function Core:applyFloatingPosition(calculateFrame, alertMessage)
+    local win = hs.window.focusedWindow()
+    if not win then return false end
+
+    local ok, id = pcall(function() return win:id() end)
+    if not ok or not id then return false end
+
+    if not self:isWindowFloating(id) then
+        self:showAlert("Window is tiled")
+        return false
+    end
+
+    local mainScreen = hs.screen.mainScreen()
+    if not mainScreen then return false end
+    local scr = mainScreen:frame()
+
+    local frame = calculateFrame(win, id, scr)
+    if frame then
+        pcall(function() win:setFrame(frame) end)
+        self:showAlert(alertMessage)
+        return true
+    end
+    return false
+end
+
+function Core:floatingWindowPosition(dir)
+    local win = hs.window.focusedWindow()
+    if not win then return end
+
+    local ok, id = pcall(function() return win:id() end)
+    if not ok or not id then return end
+
+    if not self:isWindowFloating(id) then
+        self:showAlert("Window is tiled"); return
+    end
+
+    local mainScreen = hs.screen.mainScreen()
+    if not mainScreen then return end
+    local scr = mainScreen:frame()
+
+    self.spoon.state.floatingSteps = self.spoon.state.floatingSteps or {}
+    self.spoon.state.floatingSteps[id] = self.spoon.state.floatingSteps[id] or { side = nil, ws = 1, hs = 1 }
+    local st = self.spoon.state.floatingSteps[id]
+    local side = st.side
+    if not side then
+        side = dir; st.ws, st.hs = 1, 1
+    elseif side == dir then
+        if dir == "left" or dir == "right" then st.ws = (st.ws % #FU.steps) + 1 else st.hs = (st.hs % #FU.steps) + 1 end
+    elseif not side:find("-") then
+        if (side == "left" or side == "right") and (dir == "up" or dir == "down") then
+            side = dir .. "-" .. side; st.hs = 1
+        elseif (side == "up" or side == "down") and (dir == "left" or dir == "right") then
+            side = side .. "-" .. dir; st.ws = 1
+        else
+            side = dir; st.ws, st.hs = 1, 1
+        end
+    else
+        local v, h = side:match("([^-]+)-([^-]+)")
+        if dir == "left" or dir == "right" then
+            if dir == h then
+                st.ws = (st.ws % #FU.steps) + 1
+            else
+                side = v .. "-" .. dir; st.ws = 1
+            end
+        else
+            if dir == v then
+                st.hs = (st.hs % #FU.steps) + 1
+            else
+                side = dir .. "-" .. h; st.hs = 1
+            end
+        end
+    end
+    st.side = side
+    local w = scr.w * FU.steps[st.ws]; local h = scr.h * FU.steps[st.hs]
+    if side == "left" or side == "right" then h = scr.h elseif side == "up" or side == "down" then w = scr.w end
+    pcall(function() win:setFrame(FU.pos[side](scr, w, h)) end)
+    self:showAlert(string.format("%s: %d%%×%d%%", side, FU.steps[st.ws] * 100, FU.steps[st.hs] * 100))
+end
+
+function Core:floatingWindowFullscreen()
+    local win = hs.window.focusedWindow()
+    if not win then return end
+
+    local ok, id = pcall(function() return win:id() end)
+    if not ok or not id then return end
+
+    if not self:isWindowFloating(id) then
+        self:showAlert("Window is tiled"); return
+    end
+
+    local mainScreen = hs.screen.mainScreen()
+    if not mainScreen then return end
+    local scr = mainScreen:frame()
+
+    self.spoon.state.floatingSteps = self.spoon.state.floatingSteps or {}
+    self.spoon.state.floatingSteps[id] = self.spoon.state.floatingSteps[id] or {}
+    local step = (self.spoon.state.floatingSteps[id].fs or 0) % 5 + 1
+    self.spoon.state.floatingSteps[id].fs = step
+    local steps = { 1, 0.8, 0.6, 0.4, 0.2 }
+    local r = steps[step]
+    pcall(function()
+        win:setFrame({ x = scr.x + scr.w * (1 - r) / 2, y = scr.y + scr.h * (1 - r) / 2, w = scr.w * r, h = scr.h * r })
+    end)
+    self:showAlert(string.format("%d%%", r * 100))
+end
+
+-- Universal fullscreen toggle (works in any layout)
+function Core:toggleFullscreen()
+    local win = hs.window.focusedWindow()
+    if not win then return end
+
+    local winId = win:id()
+    local scr = hs.screen.mainScreen():frame()
+
+    -- Track fullscreen state
+    self.spoon.state.fullscreenWindows = self.spoon.state.fullscreenWindows or {}
+
+    if self.spoon.state.fullscreenWindows[winId] then
+        -- Restore from fullscreen
+        local saved = self.spoon.state.fullscreenWindows[winId]
+        self.spoon.state.fullscreenWindows[winId] = nil
+
+        -- Restore floating state
+        if not saved.wasFloating then
+            self.spoon.state.floatingWindows[winId] = nil
+        end
+
+        -- Restore frame or retile
+        if saved.frame then
+            win:setFrame(saved.frame)
+        end
+        self.spoon.state.layoutChanged = true
+        self:updateLayout(true)
+        self:showAlert("Restored")
+    else
+        -- Go fullscreen
+        local wasFloating = self.spoon.state.floatingWindows[winId]
+        local frame = win:frame()
+
+        -- Save state
+        self.spoon.state.fullscreenWindows[winId] = {
+            wasFloating = wasFloating,
+            frame = { x = frame.x, y = frame.y, w = frame.w, h = frame.h }
+        }
+
+        -- Make floating and maximize
+        self.spoon.state.floatingWindows[winId] = true
+        win:setFrame(scr)
+        win:raise()
+        self:showAlert("Fullscreen")
+    end
+end
+
+function Core:floatingWindowHalves(pos)
+    local win = hs.window.focusedWindow()
+    if not win then return end
+
+    local ok, id = pcall(function() return win:id() end)
+    if not ok or not id then return end
+
+    if not self:isWindowFloating(id) then
+        self:showAlert("Window is tiled"); return
+    end
+
+    local mainScreen = hs.screen.mainScreen()
+    if not mainScreen then return end
+    local s = mainScreen:frame()
+    local frames = {
+        left_half = { x = s.x, y = s.y, w = s.w / 2, h = s.h },
+        right_half = { x = s.x + s.w / 2, y = s.y, w = s.w / 2, h = s.h },
+        top_half = { x = s.x, y = s.y, w = s.w, h = s.h / 2 },
+        bottom_half = { x = s.x, y = s.y + s.h / 2, w = s.w, h = s.h / 2 },
+        center = { x = s.x + s.w * 0.15, y = s.y + s.h * 0.15, w = s.w * 0.7, h = s.h * 0.7 },
+        maximize = s
+    }
+    local names = {
+        left_half = "Left",
+        right_half = "Right",
+        top_half = "Top",
+        bottom_half = "Bottom",
+        center = "Center",
+        maximize = "Max"
+    }
+    if frames[pos] then
+        win:setFrame(frames[pos]); self:showAlert(names[pos])
+        self.spoon.state.floatingSteps = self.spoon.state.floatingSteps or {}
+        self.spoon.state.floatingSteps[win:id()] = {}
+    end
+end
+
+function Core:floatingWindowNextScreen()
+    local win = hs.window.focusedWindow()
+    if not win then return end
+
+    local ok, id = pcall(function() return win:id() end)
+    if not ok or not id then return end
+
+    if not self:isWindowFloating(id) then
+        self:showAlert("Window is tiled"); return
+    end
+
+    local cur, next = win:screen(), win:screen():next()
+    if next and next ~= cur then
+        pcall(function() win:moveToScreen(next) end)
+        self:showAlert(next:name())
+    else
+        self:showAlert("One screen")
+    end
+end
+
+-- Scroll Controls
+function Core:scrollLeft()
+    if self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()] ~= "scroll" then
+        self:showAlert("Scroll only"); return
+    end
+    if self.spoon.layoutsModule and self.spoon.layoutsModule:scrollLeft() then
+        self:updateLayout(true); self:showAlert("← Scroll")
+    else
+        self:showAlert("At start")
+    end
+end
+
+function Core:scrollRight()
+    if self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()] ~= "scroll" then
+        self:showAlert("Scroll only"); return
+    end
+    if self.spoon.layoutsModule and self.spoon.layoutsModule:scrollRight() then
+        self:updateLayout(true); self:showAlert("Scroll →")
+    else
+        self:showAlert("At end")
+    end
+end
+
+-- Unified Tile/Scroll Controls
+function Core:createColumn()
+    local layout = self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()]
+    local win = hs.window.focusedWindow()
+    if not win then
+        self:showAlert("No window"); return
+    end
+
+    local ok, winId = pcall(function() return win:id() end)
+    if not ok or not winId then return end
+
+    local success = false
+    if layout == "tile" then
+        success = self.spoon.layoutsModule and self.spoon.layoutsModule:tileCreateColumn(winId)
+    elseif layout == "scroll" then
+        success = self.spoon.layoutsModule and self.spoon.layoutsModule:scrollCreateColumn(winId)
+    else
+        self:showAlert("Tile/Scroll only"); return
+    end
+
+    if success then
+        self:updateLayout(true)
+        self:showAlert("New Column")
+        self.spoon:saveSettings()
+    else
+        self:showAlert("Cannot create")
+    end
+end
+
+function Core:moveColumnLeft()
+    local layout = self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()]
+    local win = hs.window.focusedWindow()
+    if not win then
+        self:showAlert("No window"); return
+    end
+
+    local ok, winId = pcall(function() return win:id() end)
+    if not ok or not winId then return end
+
+    local success = false
+    if layout == "tile" then
+        success = self.spoon.layoutsModule and self.spoon.layoutsModule:tileMoveLeft(winId)
+    elseif layout == "scroll" then
+        success = self.spoon.layoutsModule and self.spoon.layoutsModule:scrollMoveLeft(winId)
+    else
+        self:showAlert("Tile/Scroll only"); return
+    end
+
+    if success then
+        self:updateLayout(true)
+        self:showAlert("← Column")
+        self.spoon:saveSettings()
+    else
+        self:showAlert("Cannot move")
+    end
+end
+
+function Core:moveColumnRight()
+    local layout = self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()]
+    local win = hs.window.focusedWindow()
+    if not win then
+        self:showAlert("No window"); return
+    end
+
+    local ok, winId = pcall(function() return win:id() end)
+    if not ok or not winId then return end
+
+    local success = false
+    if layout == "tile" then
+        success = self.spoon.layoutsModule and self.spoon.layoutsModule:tileMoveRight(winId)
+    elseif layout == "scroll" then
+        success = self.spoon.layoutsModule and self.spoon.layoutsModule:scrollMoveRight(winId)
+    else
+        self:showAlert("Tile/Scroll only"); return
+    end
+
+    if success then
+        self:updateLayout(true)
+        self:showAlert("Column →")
+        self.spoon:saveSettings()
+    else
+        self:showAlert("Cannot move")
+    end
+end
+
+function Core:showLayoutInfo()
+    local layout = self.spoon.layouts[self.spoon:getLayoutForCurrentSpace()]
+    local count = #self.spoon.state.windows
+    if layout == "tile" and self.spoon.layoutsModule then
+        local cols = self.spoon.layoutsModule.tileColumns
+        local numCols = cols and #cols or 0
+        self:showAlert(string.format("Tiling: %d cols, %d windows", numCols, count))
+    else
+        self:showAlert(string.format("%s: %d windows", layout:upper(), count))
+    end
+end
+
+return Core
