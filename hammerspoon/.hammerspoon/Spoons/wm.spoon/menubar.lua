@@ -1,5 +1,5 @@
 -- WM Menubar Module
--- Displays workspace indicators in the menubar
+-- Displays workspace indicators in the menubar (display only)
 
 local Menubar = {}
 Menubar.__index = Menubar
@@ -19,11 +19,7 @@ function Menubar:start()
     self.menubarItem = hs.menubar.new()
     if not self.menubarItem then return end
 
-    -- Set click callback to show workspace menu
-    self.menubarItem:setClickCallback(function()
-        self:showMenu()
-    end)
-
+    -- Indicator only: no menu and no click handling, so clicking it can never move focus or switch workspace
     -- Initial update
     self:update()
 end
@@ -114,55 +110,6 @@ function Menubar:update()
     end
 
     self.menubarItem:setTitle(styledText)
-end
-
-function Menubar:showMenu()
-    local wm = self.spoon.workspaceManager
-    if not wm then return end
-
-    local menuItems = {}
-
-    for i = 1, 9 do
-        local windowCount = wm:getWindowCount(i)
-        local isCurrent = (i == wm.current)
-
-        local title = "Workspace " .. i
-        if windowCount > 0 then
-            title = title .. " (" .. windowCount .. " windows)"
-        end
-        if isCurrent then
-            title = title .. " *"
-        end
-
-        table.insert(menuItems, {
-            title = title,
-            fn = function()
-                self.spoon.api:focusWorkspace(i)
-            end,
-            checked = isCurrent,
-        })
-    end
-
-    table.insert(menuItems, { title = "-" })
-
-    -- Add layout info
-    local layout = self.spoon:getCurrentLayoutName()
-    local tilingEnabled = self.spoon.core:isTilingEnabled()
-
-    table.insert(menuItems, {
-        title = "Layout: " .. (layout or "unknown"):upper(),
-        disabled = true,
-    })
-
-    table.insert(menuItems, {
-        title = "Tiling: " .. (tilingEnabled and "ON" or "OFF"),
-        fn = function()
-            self.spoon.core:toggleTiling()
-        end,
-        checked = tilingEnabled,
-    })
-
-    self.menubarItem:setMenu(menuItems)
 end
 
 return Menubar

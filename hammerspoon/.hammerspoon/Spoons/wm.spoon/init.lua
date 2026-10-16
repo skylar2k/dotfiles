@@ -16,11 +16,24 @@ obj.config = {
         -- rule can only re-enable a window by matching its subrole.
         { action = "ignore" },
         { subrole = "StandardWindow",             action = "tile" },
-        { subrole = { "Dialog", "SystemDialog" }, action = "float",           center = true },
+        { subrole = { "Dialog", "SystemDialog" }, action = "float", center = true },
         { subrole = "FloatingWindow",             action = "float" },
 
+        -- macOS system UI is never managed: menu bar dropdowns (Wi-Fi, Control Center, clock), notifications,
+        -- Spotlight, the login window. Must come after the subrole rules above so it wins.
+        {
+            app_id = { "com.apple.controlcenter", "com.apple.systemuiserver", "com.apple.notificationcenterui",
+                "com.apple.Spotlight", "com.apple.loginwindow", "com.apple.dock", "com.apple.WindowManager" },
+            action = "ignore"
+        },
+        {
+            app_name = { "MenuBarAgent", "Control Center", "SystemUIServer", "Notification Center", "Spotlight",
+                "Dock", "WindowManager", "loginwindow" },
+            action = "ignore"
+        },
+
         -- Standard windows without a fullscreen button are fixed-size panels (settings, progress, ...)
-        { subrole = "StandardWindow",             fullscreen_button = "none", action = "float" },
+        { subrole = "StandardWindow", fullscreen_button = "none",             action = "float" },
 
         -- Settings windows
         {

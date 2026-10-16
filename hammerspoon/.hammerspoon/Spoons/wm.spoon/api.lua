@@ -143,7 +143,6 @@ function API:focusWorkspace(id, silent)
     -- Set flag to ignore focus events during workspace switch
     self.spoon.state.switchingWorkspace = true
     -- Focus events caused by the switch itself must not trigger another switch
-    self.spoon.state.ignoreFocusUntil = hs.timer.secondsSinceEpoch() + 0.5
     local success = wm:switchToWorkspace(id)
     if success then
         local count = wm:getWindowCount() or 0
@@ -178,7 +177,6 @@ function API:moveToWorkspace(id, follow)
     -- Set flag to prevent focus events from switching workspace back
     if follow then
         self.spoon.state.switchingWorkspace = true
-        self.spoon.state.ignoreFocusUntil = hs.timer.secondsSinceEpoch() + 0.5
     end
 
     local success = wm:moveWindowToWorkspace(win, id, follow)
@@ -360,13 +358,11 @@ function API:start()
         local winId = spoon.helpers:getWindowId(win)
         if not winId then return end
 
-        -- Hammerspoon's own alerts/canvases are windows too: never let them drive workspace switches
-        local ownOk, ownApp = pcall(function() return win:application():bundleID() == hs.processInfo.bundleID end)
-        if ownOk and ownApp then return end
+        -- The filter reports the already-focused window when it starts: that is not a user action
+        if not spoon.state.ready then return end
 
         -- Skip focus handling during workspace switching or right after minimize
         if spoon.state.switchingWorkspace or spoon.state.justMinimized or spoon.state.rotatingStack then return end
-        if hs.timer.secondsSinceEpoch() < (spoon.state.ignoreFocusUntil or 0) then return end
 
         -- Focusing a window that lives in another workspace (Dock click, Cmd+Tab) switches to it.
         -- This must come before the de-duplication below, or re-focusing the same window never switches.
@@ -377,6 +373,8 @@ function API:start()
             lastFocusedWinId = winId
             return
         end
+
+        if targetWs == wm.current then wm:getCurrentWorkspace().focused = winId end
 
         -- Prevent focus loop: skip if same window focused again
         if winId == lastFocusedWinId then return end
@@ -544,9 +542,17 @@ function API:start()
         -- Sync existing windows to workspace 1
         if wm then wm:syncExistingWindows() end
 
-        spoon.state.ready = true -- From here on, settings may be written
+        spoon.state.ready = true -- From here on, settings may be written and focus changes are followed
         spoon.state.layoutChanged = true
         spoon:updateLayout()
+        if spoon.menubar then spoon.menubar:update() end
+
+        -- After a reload the focused window can be one parked in another workspace (it kept key status
+        -- while hidden): hand focus to the workspace we are actually showing
+        local focusedId = spoon.helpers:getWindowId(hs.window.focusedWindow())
+        local focusedWs = focusedId and wm.windowToWorkspace[focusedId]
+        if focusedWs and focusedWs ~= wm.current then wm:focusCurrentWorkspace() end
+
         spoon.core:showAlert("WindowManager+ Ready")
     end)
 

@@ -220,6 +220,7 @@ function WorkspaceManager:moveWindowToWorkspace(win, targetWsId, follow)
         end
         self.spoon.state.layoutChanged = true
         self.spoon:updateLayout(true)
+        self:focusCurrentWorkspace() -- The moved window was focused and is now parked
     end
 
     return true
@@ -254,6 +255,26 @@ function WorkspaceManager:collectLiveWindows(ws)
     end
     table.sort(live, function(a, b) return (a.data.seq or a.id) < (b.data.seq or b.id) end)
     return live
+end
+
+--- Give keyboard focus to a window of the current workspace, or to the desktop when it has none.
+--- Parked windows must never keep focus: the app owning the focused window owns the macOS menu bar,
+--- and whenever that app is re-activated (menu bar click, Cmd+Tab) macOS hands focus back to its
+--- parked window.
+function WorkspaceManager:focusCurrentWorkspace()
+    local ws = self:getCurrentWorkspace()
+
+    local target = ws.focused and hs.window.get(ws.focused)
+    if not target then
+        local live = self:collectLiveWindows(ws)
+        local tiled = self:getWindowsForLayout()
+        target = tiled[1] or (live[1] and live[1].win)
+    end
+    if not target then
+        local ok, desktop = pcall(hs.window.desktop)
+        target = ok and desktop or nil
+    end
+    if target then pcall(function() target:focus() end) end
 end
 
 --- Switch to a different workspace (optimized for speed)
@@ -335,10 +356,7 @@ function WorkspaceManager:switchToWorkspace(targetWsId, forceRetile)
         self.spoon.state.windows = windows
     end
 
-    -- Focus last focused window
-    local focusWin = targetWs.focused and hs.window.get(targetWs.focused)
-    if not focusWin and toShow[1] then focusWin = toShow[1].win end
-    if focusWin then pcall(function() focusWin:focus() end) end
+    self:focusCurrentWorkspace()
 
     return true
 end
