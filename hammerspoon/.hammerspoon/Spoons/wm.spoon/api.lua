@@ -87,8 +87,8 @@ function API:bindHotkeys(mapping)
         floatingCenter = function() core:floatingWindowHalves("center") end,
         floatingMaximize = function() core:floatingWindowHalves("maximize") end,
 
-        -- Universal fullscreen (works in any layout)
-        toggleFullscreen = function() core:toggleFullscreen() end,
+        -- Zoom: the focused window temporarily fills the screen
+        toggleZoom = function() core:toggleZoom() end,
 
         -- Layout info
         showLayoutInfo = function() core:showLayoutInfo() end,
@@ -416,6 +416,15 @@ function API:start()
 
         tags:noteFocus(winId)
 
+        -- Focusing another tiled window ends the zoom (it would stay hidden behind the zoomed one).
+        -- Floating windows, such as a dialog of the zoomed app, don't.
+        local zoomed = tags:getZoomed()
+        if zoomed and zoomed.id ~= winId and not client.floating then
+            tags:setZoomed(zoomed.id, false)
+            spoon:updateLayout()
+            if spoon.menubar then spoon.menubar:update() end
+        end
+
         -- Prevent focus loop: skip if same window focused again
         if winId == lastFocusedWinId then return end
 
@@ -501,7 +510,7 @@ function API:start()
                 end
             end
 
-            if srcIdx and dstIdx and not tags:isFloating(winId) then
+            if srcIdx and dstIdx and not tags:isFloating(winId) and not tags:getZoomed() then
                 spoon.core:swapIndices(srcIdx, dstIdx)
                 spoon.core:showAlert("Swapped")
                 spoon.core:updateLayout()

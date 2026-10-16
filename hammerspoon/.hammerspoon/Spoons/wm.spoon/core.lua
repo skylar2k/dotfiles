@@ -125,12 +125,29 @@ end
 
 -- Window Management
 function Core:updateLayout()
+    local spoon = self.spoon
+
+    -- A zoomed window fills the screen and nothing else is laid out: that keeps the layout state
+    -- intact, so un-zooming puts every window back where it was
+    local zoomed = spoon.tags:getZoomed()
+    if zoomed then
+        local screen = hs.screen.mainScreen()
+        if screen then
+            local f, gap = screen:frame(), spoon.config.zoomGap or 0
+            spoon.layoutsModule:place(zoomed.win, { x = f.x + gap, y = f.y + gap, w = f.w - 2 * gap, h = f.h - 2 * gap })
+            pcall(zoomed.win.raise, zoomed.win)
+        end
+        spoon.state.windows = spoon.tags:getVisibleTiled()
+        spoon.ui:updateAll()
+        spoon.state.layoutAppliedAt = hs.timer.secondsSinceEpoch()
+        return
+    end
+
     -- Skip layout if tile is disabled
     if not self:isTilingEnabled() then
         return
     end
 
-    local spoon = self.spoon
     local windows = spoon.tags:getVisibleTiled()
     spoon.state.windows = windows
 
@@ -511,49 +528,24 @@ function Core:floatingWindowFullscreen()
     self:showAlert(string.format("%d%%", r * 100))
 end
 
--- Universal fullscreen toggle (works in any layout)
-function Core:toggleFullscreen()
+-- Zoom the focused window to fill the screen, or put it back (not macOS fullscreen: no new Space)
+function Core:toggleZoom()
     local win, winId = self:getFocusedWindow()
-    local mainScreen = hs.screen.mainScreen()
-    if not win or not mainScreen then return end
-    local scr = mainScreen:frame()
-
-    -- Track fullscreen state
-    self.spoon.state.fullscreenWindows = self.spoon.state.fullscreenWindows or {}
-
-    if self.spoon.state.fullscreenWindows[winId] then
-        -- Restore from fullscreen
-        local saved = self.spoon.state.fullscreenWindows[winId]
-        self.spoon.state.fullscreenWindows[winId] = nil
-
-        -- Restore floating state
-        if not saved.wasFloating then
-            self.spoon.tags:setFloating(winId, false)
-        end
-
-        -- Restore frame or retile
-        if saved.frame then
-            win:setFrame(saved.frame)
-        end
-        self:updateLayout()
-        self:showAlert("Restored")
-    else
-        -- Go fullscreen
-        local wasFloating = self.spoon.tags:isFloating(winId)
-        local frame = win:frame()
-
-        -- Save state
-        self.spoon.state.fullscreenWindows[winId] = {
-            wasFloating = wasFloating,
-            frame = { x = frame.x, y = frame.y, w = frame.w, h = frame.h }
-        }
-
-        -- Make floating and maximize
-        self.spoon.tags:setFloating(winId, true)
-        win:setFrame(scr)
-        win:raise()
-        self:showAlert("Fullscreen")
+    local tags = self.spoon.tags
+    if not win or not tags:getClient(winId) then
+        self:showAlert("No managed window focused"); return
     end
+
+    local client = tags:getClient(winId)
+    if client.zoomed then
+        tags:setZoomed(winId, false)
+        self:showAlert("Unzoomed")
+    else
+        tags:setZoomed(winId, true)
+        self:showAlert("Zoomed")
+    end
+    self:updateLayout()
+    if self.spoon.menubar then self.spoon.menubar:update() end
 end
 
 function Core:floatingWindowHalves(pos)

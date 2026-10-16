@@ -47,7 +47,8 @@ function Menubar:update()
     local tilingEnabled = spoon.core:isTilingEnabled()
 
     -- Redraw only when something visible changed: layout passes call this very often
-    local key = string.format("%d|%d|%s|%s", view, occupied, tostring(layout), tostring(tilingEnabled))
+    local zoomed = tags:getZoomed() ~= nil
+    local key = string.format("%d|%d|%s|%s|%s", view, occupied, tostring(layout), tostring(tilingEnabled), tostring(zoomed))
     if key == self.lastKey then return end
     self.lastKey = key
 
@@ -75,7 +76,7 @@ function Menubar:update()
     if layout then
         local displayColor = tilingEnabled and layoutColor or DIMMED
         styledText = styledText .. hs.styledtext.new(
-            " │ " .. (LAYOUT_NAMES[layout] or layout) .. (tilingEnabled and "" or " ○"),
+            " │ " .. (LAYOUT_NAMES[layout] or layout) .. (tilingEnabled and "" or " ○") .. (zoomed and " ⤢" or ""),
             { color = displayColor, font = { name = ".AppleSystemUIFont", size = 16 } })
     end
 

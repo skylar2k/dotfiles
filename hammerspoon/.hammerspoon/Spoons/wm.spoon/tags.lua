@@ -266,6 +266,43 @@ function Tags:toggleWindowTag(winId, mask)
     return true
 end
 
+--- Zoom: a window temporarily fills the screen. Layout state is untouched, so un-zooming puts every
+--- window back exactly where it was. Only one window is zoomed per view.
+function Tags:setZoomed(winId, zoomed)
+    local c = self.clients[winId]
+    if not c then return false end
+
+    if zoomed then
+        local view = self:viewMask()
+        for _, other in pairs(self.clients) do
+            if other ~= c and other.zoomed and other.tags & view ~= 0 then self:setZoomed(other.id, false) end
+        end
+        if not c.zoomed then
+            local ok, frame = pcall(c.win.frame, c.win)
+            c.zoomFrame = ok and plainFrame(frame) or nil
+        end
+        c.zoomed = true
+    elseif c.zoomed then
+        c.zoomed = false
+        -- Tiled windows are put back by the layout; floating ones go back to where they were
+        if c.floating and c.zoomFrame then pcall(c.win.setFrame, c.win, c.zoomFrame) end
+        c.zoomFrame = nil
+    end
+    return true
+end
+
+--- The zoomed window in view, if any
+function Tags:getZoomed()
+    local view = self:viewMask()
+    local best
+    for _, c in pairs(self.clients) do
+        if c.zoomed and c.tags & view ~= 0 and not c.minimized and (not best or c.focusSeq > best.focusSeq) then
+            best = c
+        end
+    end
+    if best and alive(best) then return best end
+end
+
 function Tags:noteFocus(winId)
     local c = self.clients[winId]
     if not c then return end

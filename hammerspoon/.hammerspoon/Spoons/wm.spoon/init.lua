@@ -11,45 +11,26 @@ obj.config = {
     -- (yours, set via configure) can override anything in `defaultRules`.
     -- Set `defaultRules = {}` in configure() to start from a clean slate.
     defaultRules = {
-        -- Only real windows are ever managed. Everything else (notification banners, popups, sheets,
-        -- tooltips, Hammerspoon's own alerts, windows without a subrole, ...) is ignored. A later
-        -- rule can only re-enable a window by matching its subrole.
+        -- Only real windows are managed: everything else (popups, sheets, notification banners, ...)
+        -- is ignored unless a later rule re-enables it by matching its subrole.
         { action = "ignore" },
         { subrole = "StandardWindow",             action = "tile" },
         { subrole = { "Dialog", "SystemDialog" }, action = "float", center = true },
         { subrole = "FloatingWindow",             action = "float" },
 
-        -- macOS system UI is never managed: menu bar dropdowns (Wi-Fi, Control Center, clock), notifications,
-        -- Spotlight, the login window. Must come after the subrole rules above so it wins.
+        -- Fixed-size windows (settings, calculators, progress panels) have no fullscreen button
+        -- and can't be tiled sensibly
+        { subrole = "StandardWindow", fullscreen_button = "none", action = "float" },
+
+        -- Never managed, whatever they look like: macOS system UI (menu bar dropdowns, notifications,
+        -- Spotlight, ...) and Hammerspoon's own windows (chooser, console). Keep these last so they win.
         {
-            app_id = { "com.apple.controlcenter", "com.apple.systemuiserver", "com.apple.notificationcenterui",
-                "com.apple.Spotlight", "com.apple.loginwindow", "com.apple.dock", "com.apple.WindowManager" },
+            app_id = { "org.hammerspoon.Hammerspoon", "com.apple.controlcenter", "com.apple.systemuiserver",
+                "com.apple.notificationcenterui", "com.apple.Spotlight", "com.apple.loginwindow",
+                "com.apple.dock", "com.apple.WindowManager" },
             action = "ignore"
         },
-        {
-            app_name = { "MenuBarAgent", "Control Center", "SystemUIServer", "Notification Center", "Spotlight",
-                "Dock", "WindowManager", "loginwindow" },
-            action = "ignore"
-        },
-
-        -- Standard windows without a fullscreen button are fixed-size panels (settings, progress, ...)
-        { subrole = "StandardWindow", fullscreen_button = "none",             action = "float" },
-
-        -- Settings windows
-        {
-            subrole = "StandardWindow",
-            title = { "Settings", "Preferences", "Settings…", "Preferences…", "* Settings", "* Preferences" },
-            action = "float"
-        },
-
-        -- Utility apps that make no sense tiled
-        {
-            subrole = "StandardWindow",
-            app_name = { "System Settings", "System Preferences", "Activity Monitor", "Console",
-                "Disk Utility", "Keychain Access", "Calculator" },
-            action = "float"
-        },
-        { subrole = "StandardWindow", app_id = "org.hammerspoon.Hammerspoon", action = "float" },
+        { app_name = "MenuBarAgent", action = "ignore" },
     },
     rules = {},
 
@@ -95,7 +76,6 @@ obj.state = {
     floatingSteps = {},
     tileEnabled = true,    -- Global tiling toggle (persisted)
     alertUUID = nil,
-    fullscreenWindows = {},
     ready = false          -- Set once startup is complete; settings are never written before this
 }
 

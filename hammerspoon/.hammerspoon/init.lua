@@ -71,7 +71,7 @@ local wm_hotkeys = {
     chooseLayout = { mods("shift"), "t" },
     toggleTiling = { main, "t" },
     toggleFloatingWindow = { mods("shift"), "space" },
-    toggleFullscreen = { main, "f" },
+    toggleZoom = { main, "z" },
 
     -- Floating windows: arrows step through sizes, shift+arrows snap to halves
     floatingPositionLeft = { main, "left" },

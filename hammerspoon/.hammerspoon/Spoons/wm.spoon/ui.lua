@@ -35,6 +35,7 @@ function UI:updateFocusedWindowIndicator()
     local win = hs.window.focusedWindow()
     local winId = win and spoon.helpers:getWindowId(win)
     if not winId or not spoon.tags:isTiled(winId) then return hideIndicator(self) end -- Only tiled windows in view
+    if spoon.tags:getZoomed() then return hideIndicator(self) end
 
     local ok, frame = pcall(win.frame, win)
     local color = spoon.config.modeColors[layout]
