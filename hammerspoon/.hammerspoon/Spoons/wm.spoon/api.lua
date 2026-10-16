@@ -335,6 +335,16 @@ function API:start()
             local winId = win:id()
             if winId and wm then wm:removeWindow(winId) end
             updateLayout("windowDestroyed")
+
+            -- Closing a window must leave you where you are. macOS re-activates the previously active
+            -- app, whose key window is usually parked in another workspace: don't follow that, and put
+            -- focus on something visible instead (the next window here, or the desktop if none is left).
+            spoon.state.windowClosedUntil = hs.timer.secondsSinceEpoch() + 0.6
+            hs.timer.doAfter(0.1, function()
+                local focusedId = spoon.helpers:getWindowId(hs.window.focusedWindow())
+                local focusedWs = focusedId and wm.windowToWorkspace[focusedId]
+                if focusedWs and focusedWs ~= wm.current then wm:focusCurrentWorkspace() end
+            end)
         end
     end)
 
@@ -360,6 +370,7 @@ function API:start()
 
         -- The filter reports the already-focused window when it starts: that is not a user action
         if not spoon.state.ready then return end
+        if hs.timer.secondsSinceEpoch() < (spoon.state.windowClosedUntil or 0) then return end
 
         -- Skip focus handling during workspace switching or right after minimize
         if spoon.state.switchingWorkspace or spoon.state.justMinimized or spoon.state.rotatingStack then return end
