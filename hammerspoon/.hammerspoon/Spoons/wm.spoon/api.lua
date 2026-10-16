@@ -90,6 +90,9 @@ function API:bindHotkeys(mapping)
         -- Zoom: the focused window temporarily fills the screen
         toggleZoom = function() core:toggleZoom() end,
 
+        -- dwm killclient
+        killClient = function() core:killClient() end,
+
         -- Layout info
         showLayoutInfo = function() core:showLayoutInfo() end,
         showWindowInfo = function() core:showWindowInfo() end,
@@ -117,6 +120,11 @@ function API:bindHotkeys(mapping)
         def["moveToPosition" .. i] = function() core:moveToPosition(i) end
     end
 
+    -- dwm spawn: one spawn_<name> action per entry of config.commands
+    for name in pairs(spoon.config.commands) do
+        def["spawn_" .. name] = function() self:spawn(name) end
+    end
+
     for i = 1, tags.COUNT do
         local bit = tags.bit(i)
         def["viewTag" .. i] = function() self:viewTags(bit) end                    -- dwm view
@@ -128,6 +136,42 @@ function API:bindHotkeys(mapping)
 
     hs.spoons.bindHotkeysToSpec(def, mapping)
     return spoon
+end
+
+--------------------------------------------------------------------------------
+-- Spawn
+--------------------------------------------------------------------------------
+
+--- dwm spawn: run a program. `command` is the name of an entry in config.commands, a shell command
+--- string, or { program, arg, ... }. Shell strings run through a login shell so your PATH applies.
+function API:spawn(command)
+    local spoon = self.spoon
+    local spec = spoon.config.commands[command] or command
+
+    local program, args
+    if type(spec) == "string" then
+        program, args = "/bin/zsh", { "-lc", spec }
+    elseif type(spec) == "table" and type(spec[1]) == "string" then
+        program, args = spec[1], { table.unpack(spec, 2) }
+    else
+        spoon.core:showAlert("Nothing to spawn")
+        return false
+    end
+
+    self.tasks = self.tasks or {}
+    local task
+    task = hs.task.new(program, function(exitCode, _, stderr)
+        self.tasks[task] = nil
+        if exitCode ~= 0 then
+            print(string.format("[WM spawn] %s exited with %s: %s", tostring(command), tostring(exitCode), tostring(stderr)))
+        end
+    end, args)
+    if not task or not task:start() then
+        spoon.core:showAlert("Could not start " .. tostring(command))
+        return false
+    end
+    self.tasks[task] = true -- Keep a reference while it runs
+    return true
 end
 
 --------------------------------------------------------------------------------
@@ -579,7 +623,6 @@ function API:validateConfig(config)
             layoutUpdateDelay = 0.08,
             spaceChangeDelay = 0.12,
             initialSetupDelay = 0.15,
-            windowLockDuration = 0.4,
             ruleRecheckDelay = 0.4
         }
         for field, defaultVal in pairs(timingDefaults) do
@@ -587,6 +630,17 @@ function API:validateConfig(config)
                 table.insert(warnings, "timing." .. field .. " invalid, using default " .. defaultVal)
                 timing[field] = defaultVal
             end
+        end
+    end
+
+    if config.newWindow ~= nil and config.newWindow ~= "master" and config.newWindow ~= "last" then
+        table.insert(warnings, 'newWindow must be "master" or "last", using "master"')
+        config.newWindow = "master"
+    end
+    for _, key in ipairs({ "scroll", "commands" }) do
+        if config[key] ~= nil and type(config[key]) ~= "table" then
+            table.insert(warnings, key .. " must be a table, ignoring")
+            config[key] = nil
         end
     end
 

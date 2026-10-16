@@ -34,9 +34,15 @@ obj.config = {
     },
     rules = {},
 
+    newWindow = "master",       -- Where new windows go: "master" (dwm's attach) or "last"
+    scroll = { wrap = false },  -- Scrolling past the first/last column wraps around
+
+    -- Programs for spawn_<name> hotkeys: a shell command string, or { program, arg, ... }
+    commands = {},
+
     -- Consolidated sub-configs
-    resizing = { step = 0.05, minRatio = 0.15, maxRatio = 0.85 },
-    timing = { layoutUpdateDelay = 0.08, spaceChangeDelay = 0.12, initialSetupDelay = 0.15, windowLockDuration = 0.4, ruleRecheckDelay = 0.4 },
+    resizing = { step = 0.05, minRatio = 0.15 },
+    timing = { layoutUpdateDelay = 0.08, spaceChangeDelay = 0.12, initialSetupDelay = 0.15, ruleRecheckDelay = 0.4 },
     focusedWindowIndicator = { width = 50, height = 4, opacity = 0.9, borderRadius = 2 },
     alerts = {
         enabled = true,
@@ -61,7 +67,6 @@ obj.config = {
     -- Menubar tag indicator
     menubar = {
         enabled = true,
-        showWindowCount = true,
         activeColor = { red = 0.4, green = 0.8, blue = 0.4 },
         inactiveColor = { red = 0.5, green = 0.5, blue = 0.5 },
         hasWindowsColor = { red = 0.8, green = 0.8, blue = 0.8 },
@@ -129,7 +134,7 @@ function obj:init()
     self.core = Core:new(self)
     self.api = API:new(self)
     self.tags = Tags:new(self)
-    self.layoutsModule = Layouts:new(self.config, self)
+    self.layoutsModule = Layouts:new(self)
     self.menubar = Menubar:new(self)
 
     self:loadSettings()

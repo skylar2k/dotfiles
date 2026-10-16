@@ -85,7 +85,8 @@ function Tags:new(spoon)
     local o = setmetatable({}, self)
     o.spoon = spoon
     o.clients = {}       -- winId -> { id, win, tags, floating, manual, minimized, parked, seq, focusSeq, frame }
-    o.nextSeq = 1        -- Insertion counter: stable window order (pairs() order is not)
+    o.tailSeq = 1        -- Client order is a sequence number: new windows go before the head (dwm attach) ...
+    o.headSeq = 0        -- ... or after the tail, depending on `newWindow`
     o.focusCounter = 0   -- Focus recency counter
     o.tagset = { 1, 1 }  -- dwm: tagset[seltags] is the current view, the other one the previous view
     o.seltags = 1
@@ -177,7 +178,8 @@ function Tags:getClient(winId)
     return winId and self.clients[winId]
 end
 
---- Start tracking a window. opts: { floating = bool, frame = {x,y,w,h} }.
+--- Start tracking a window. opts: { floating = bool, frame = {x,y,w,h}, attach = "master" | "last" }.
+--- New windows become the master, as in dwm, unless `newWindow = "last"` is configured.
 --- Returns the client, or nil if the window is invalid or already tracked.
 function Tags:register(win, mask, opts)
     opts = opts or {}
@@ -195,11 +197,15 @@ function Tags:register(win, mask, opts)
         manual = false,
         minimized = minOk and minimized or false,
         parked = false,
-        seq = self.nextSeq,
+        seq = 0,
         focusSeq = 0,
         frame = plainFrame(opts.frame),
     }
-    self.nextSeq = self.nextSeq + 1
+    if (opts.attach or self.spoon.config.newWindow or "master") == "last" then
+        c.seq, self.tailSeq = self.tailSeq, self.tailSeq + 1
+    else
+        c.seq, self.headSeq = self.headSeq, self.headSeq - 1
+    end
     self.clients[winId] = c
     return c
 end
@@ -537,7 +543,8 @@ function Tags:restore(data)
                     c.seq = tonumber(saved.seq) or c.seq
                     c.focusSeq = tonumber(saved.focusSeq) or 0
                     c.parked = c.tags & view == 0 -- Windows outside the view were parked when we last ran
-                    self.nextSeq = math.max(self.nextSeq, c.seq + 1)
+                    self.tailSeq = math.max(self.tailSeq, c.seq + 1)
+                    self.headSeq = math.min(self.headSeq, c.seq - 1)
                     self.focusCounter = math.max(self.focusCounter, c.focusSeq)
                     restored = restored + 1
                 end
@@ -569,7 +576,9 @@ function Tags:syncExisting()
                     pcall(win.setFrame, win, frame)
                 end
 
-                local c = self:register(win, result.tags or view, { floating = result.manage == "float", frame = frame })
+                -- Windows that were already open keep the order the system lists them in
+                local c = self:register(win, result.tags or view,
+                    { floating = result.manage == "float", frame = frame, attach = "last" })
                 if c and c.tags & view == 0 then self:hide(c) end
             end
         end

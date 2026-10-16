@@ -2,9 +2,9 @@
 local Layouts = {}
 Layouts.__index = Layouts
 
-function Layouts:new(config, spoonRef)
+function Layouts:new(spoon)
     local o = setmetatable({}, self)
-    o.spoon = spoonRef -- Store reference to main spoon
+    o.spoon = spoon
 
     -- Tiling layout state (unified master/bsp replacement)
     o.tileColumns = {} -- Array of {windows = {winId...}, ratio = 0.6, rowRatios = {...}}
@@ -178,6 +178,7 @@ function Layouts:tileSyncColumns(wins)
     end
 
     -- Remove missing windows from columns
+    local masterGone = false
     for colIdx = #self.tileColumns, 1, -1 do
         local col = self.tileColumns[colIdx]
         for winIdx = #col.windows, 1, -1 do
@@ -195,7 +196,17 @@ function Layouts:tileSyncColumns(wins)
         -- Remove empty columns
         if #col.windows == 0 then
             table.remove(self.tileColumns, colIdx)
+            if colIdx == 1 then masterGone = true end
         end
+    end
+
+    -- dwm: when the master goes away, the first window of the stack takes its place
+    if masterGone and #self.tileColumns == 1 and #self.tileColumns[1].windows >= 2 then
+        local stack = self.tileColumns[1]
+        local head = table.remove(stack.windows, 1)
+        stack.rowRatios = nil
+        stack.ratio = 1 - self.defaultMasterRatio
+        table.insert(self.tileColumns, 1, { windows = { head }, ratio = self.defaultMasterRatio })
     end
 
     -- Normalize row ratios for columns that lost windows
@@ -205,26 +216,64 @@ function Layouts:tileSyncColumns(wins)
         end
     end
 
-    -- Add new windows to stack column (or create columns as needed)
-    for winId, _ in pairs(currentWins) do
-        if #self.tileColumns == 0 then
-            -- No columns exist, create first
-            table.insert(self.tileColumns, { windows = { winId }, ratio = 1.0 })
-        elseif #self.tileColumns == 1 then
-            -- Transitioning from 1 to 2 columns - use default 60/40 split
-            self.tileColumns[1].ratio = self.defaultMasterRatio
-            table.insert(self.tileColumns, { windows = { winId }, ratio = 1 - self.defaultMasterRatio })
-        else
-            -- Add to last column (stack behavior)
-            local lastCol = self.tileColumns[#self.tileColumns]
-            table.insert(lastCol.windows, winId)
-            -- Clear rowRatios to trigger equal distribution
-            lastCol.rowRatios = nil
-        end
+    -- Windows that are not in any column yet, in client order (currentWins now only holds those)
+    local fresh = {}
+    for _, win in ipairs(wins) do
+        local ok, id = pcall(win.id, win)
+        if ok and currentWins[id] then fresh[#fresh + 1] = id end
+    end
+
+    if self.spoon.config.newWindow == "last" then
+        for _, winId in ipairs(fresh) do self:tileAttachLast(winId) end
+    else
+        -- Oldest first, so the newest of a batch ends up as the master
+        for i = #fresh, 1, -1 do self:tileAttachMaster(fresh[i]) end
     end
 
     -- Normalize column ratios
     self:tileNormalizeColumnRatios()
+end
+
+-- dwm attach: the new window becomes the master and the old master moves to the top of the stack.
+-- If the master column holds several windows (you stacked it yourself), the new one joins it on top.
+function Layouts:tileAttachMaster(winId)
+    local cols = self.tileColumns
+    if #cols == 0 then
+        cols[1] = { windows = { winId }, ratio = 1.0 }
+        return
+    end
+
+    local master = cols[1]
+    if #master.windows > 1 then
+        table.insert(master.windows, 1, winId)
+        master.rowRatios = nil
+        return
+    end
+
+    local old = master.windows[1]
+    master.windows[1] = winId
+    if #cols == 1 then
+        master.ratio = self.defaultMasterRatio
+        cols[2] = { windows = { old }, ratio = 1 - self.defaultMasterRatio }
+    else
+        table.insert(cols[2].windows, 1, old)
+        cols[2].rowRatios = nil
+    end
+end
+
+-- The other placement (`newWindow = "last"`): the new window goes to the bottom of the last column
+function Layouts:tileAttachLast(winId)
+    local cols = self.tileColumns
+    if #cols == 0 then
+        cols[1] = { windows = { winId }, ratio = 1.0 }
+    elseif #cols == 1 then
+        cols[1].ratio = self.defaultMasterRatio
+        cols[2] = { windows = { winId }, ratio = 1 - self.defaultMasterRatio }
+    else
+        local last = cols[#cols]
+        table.insert(last.windows, winId)
+        last.rowRatios = nil
+    end
 end
 
 -- Locate a window in tileColumns: returns colIdx, winIdx (or nil)
@@ -354,7 +403,7 @@ function Layouts:tileResizeColumn(winId, direction)
         local neighborIdx = colIdx < #self.tileColumns and colIdx + 1 or colIdx - 1
         if neighborIdx >= 1 and neighborIdx <= #self.tileColumns then
             local neighbor = self.tileColumns[neighborIdx]
-            if neighbor.ratio > 0.1 then
+            if neighbor.ratio > self.spoon.config.resizing.minRatio then
                 col.ratio = col.ratio + step
                 neighbor.ratio = neighbor.ratio - step
             end
@@ -364,7 +413,7 @@ function Layouts:tileResizeColumn(winId, direction)
         local neighborIdx = colIdx > 1 and colIdx - 1 or colIdx + 1
         if neighborIdx >= 1 and neighborIdx <= #self.tileColumns then
             local neighbor = self.tileColumns[neighborIdx]
-            if col.ratio > 0.1 then
+            if col.ratio > self.spoon.config.resizing.minRatio then
                 col.ratio = col.ratio - step
                 neighbor.ratio = neighbor.ratio + step
             end
@@ -394,14 +443,14 @@ function Layouts:tileResizeRow(winId, direction)
     if direction == "down" then
         -- Grow this row, shrink row below (or above if at bottom)
         local neighborIdx = winIdx < #targetCol.windows and winIdx + 1 or winIdx - 1
-        if targetCol.rowRatios[neighborIdx] > 0.1 then
+        if targetCol.rowRatios[neighborIdx] > self.spoon.config.resizing.minRatio then
             targetCol.rowRatios[winIdx] = targetCol.rowRatios[winIdx] + step
             targetCol.rowRatios[neighborIdx] = targetCol.rowRatios[neighborIdx] - step
         end
     elseif direction == "up" then
         -- Shrink this row, grow row above (or below if at top)
         local neighborIdx = winIdx > 1 and winIdx - 1 or winIdx + 1
-        if targetCol.rowRatios[winIdx] > 0.1 then
+        if targetCol.rowRatios[winIdx] > self.spoon.config.resizing.minRatio then
             targetCol.rowRatios[winIdx] = targetCol.rowRatios[winIdx] - step
             targetCol.rowRatios[neighborIdx] = targetCol.rowRatios[neighborIdx] + step
         end
@@ -625,20 +674,27 @@ function Layouts:scrollFindWindow(winId)
     end
 end
 
--- Scroll left (move center focus to previous column)
+-- Scroll left (move center focus to previous column); wraps to the last column if configured
 function Layouts:scrollLeft()
     if self.scrollViewOffset > 0 then
         self.scrollViewOffset = self.scrollViewOffset - 1
         return true
     end
+    if self.spoon.config.scroll.wrap and #self.scrollColumns > 1 then
+        self.scrollViewOffset = #self.scrollColumns - 1
+        return true
+    end
     return false
 end
 
--- Scroll right (move center focus to next column)
+-- Scroll right (move center focus to next column); wraps to the first column if configured
 function Layouts:scrollRight()
-    local maxOffset = math.max(0, #self.scrollColumns - 1)
-    if self.scrollViewOffset < maxOffset then
+    if self.scrollViewOffset < #self.scrollColumns - 1 then
         self.scrollViewOffset = self.scrollViewOffset + 1
+        return true
+    end
+    if self.spoon.config.scroll.wrap and #self.scrollColumns > 1 then
+        self.scrollViewOffset = 0
         return true
     end
     return false

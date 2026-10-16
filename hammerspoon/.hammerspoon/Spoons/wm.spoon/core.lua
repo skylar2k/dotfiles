@@ -528,6 +528,16 @@ function Core:floatingWindowFullscreen()
     self:showAlert(string.format("%d%%", r * 100))
 end
 
+-- dwm killclient: close the focused window
+function Core:killClient()
+    local win = hs.window.focusedWindow()
+    if not win then
+        self:showAlert("No focused window"); return
+    end
+    local ok, closed = pcall(win.close, win)
+    if not ok or not closed then self:showAlert("Could not close window") end
+end
+
 -- Zoom the focused window to fill the screen, or put it back (not macOS fullscreen: no new Space)
 function Core:toggleZoom()
     local win, winId = self:getFocusedWindow()

@@ -9,7 +9,13 @@ wm:configure({
 
     menubar = {
         enabled = true,
-        showWindowCount = true,
+    },
+
+    scroll = { wrap = true }, -- scrolling past the last column wraps around to the first
+
+    -- Programs for spawn_<name> hotkeys: a shell command, or { program, arg, ... }
+    commands = {
+        terminal = "open -na Terminal",
     },
 
     rules = {
@@ -72,6 +78,8 @@ local wm_hotkeys = {
     toggleTiling = { main, "t" },
     toggleFloatingWindow = { mods("shift"), "space" },
     toggleZoom = { main, "z" },
+    killClient = { mods("shift"), "c" },
+    spawn_terminal = { mods("shift"), "return" },
 
     -- Floating windows: arrows step through sizes, shift+arrows snap to halves
     floatingPositionLeft = { main, "left" },
