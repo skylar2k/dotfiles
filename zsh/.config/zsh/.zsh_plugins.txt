@@ -1,0 +1,11 @@
+mattmc3/zephyr path:plugins/color
+mattmc3/zephyr path:plugins/autosuggest
+mattmc3/zephyr path:plugins/macos
+
+# set up Zsh completions with plugins
+mattmc3/ez-compinit
+zsh-users/zsh-completions kind:fpath path:src
+
+jeffreytse/zsh-vi-mode
+aloxaf/fzf-tab
+zdharma-continuum/fast-syntax-highlighting kind:defer
