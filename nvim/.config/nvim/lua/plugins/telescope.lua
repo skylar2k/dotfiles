@@ -38,6 +38,8 @@ local builtin = require("telescope.builtin")
 vim.keymap.set("n", "<leader>ff", builtin.find_files, { desc = "Find files" })
 vim.keymap.set("n", "<leader>fg", builtin.live_grep, { desc = "Live grep" })
 vim.keymap.set("n", "<leader>fD", builtin.diagnostics, { desc = "Diagnostics (project)" })
+vim.keymap.set("n", "<leader>fs", builtin.lsp_document_symbols, { desc = "Symbols (file)" })
+vim.keymap.set("n", "<leader>fS", builtin.lsp_dynamic_workspace_symbols, { desc = "Symbols (project, live)" })
 vim.keymap.set("n", "<leader>bb", builtin.buffers, { desc = "Search buffers" })
 vim.keymap.set("n", "<leader>?", builtin.help_tags, { desc = "Help tags" })
 

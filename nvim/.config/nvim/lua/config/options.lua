@@ -31,6 +31,14 @@ opt.inccommand = "split" -- live preview of :s in a split
 opt.splitright = true
 opt.splitbelow = true
 
+-- Folding: treesitter by default, the language server when it offers folds (config/lsp.lua).
+-- Everything starts open; `zM` collapses a file to an outline of its classes and functions,
+-- `za` toggles one fold and `zR` opens all.
+opt.foldmethod = "expr"
+opt.foldexpr = "v:lua.vim.treesitter.foldexpr()"
+opt.foldlevelstart = 99
+opt.foldtext = "" -- show the folded line itself, with syntax highlighting
+
 -- Completion: built-in popup as you type. Sources: current buffer, windows, loaded buffers and
 -- the buffer's omnifunc ("o", which is the language server when one is attached).
 -- Accept with <C-y>, navigate with <Tab>/<S-Tab> (keymaps.lua).

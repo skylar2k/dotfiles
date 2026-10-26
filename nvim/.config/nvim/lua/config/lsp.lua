@@ -38,6 +38,11 @@ vim.api.nvim_create_autocmd("LspAttach", {
 			vim.lsp.completion.enable(true, client.id, ev.buf)
 		end
 
+		-- Prefer the server's folding ranges over treesitter's when it has them (options.lua)
+		if client:supports_method("textDocument/foldingRange") then
+			vim.wo[vim.api.nvim_get_current_win()][0].foldexpr = "v:lua.vim.lsp.foldexpr()"
+		end
+
 		vim.keymap.set("n", "gd", vim.lsp.buf.definition, { buffer = ev.buf, desc = "Go to definition" })
 	end,
 })
