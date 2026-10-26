@@ -45,6 +45,10 @@ opt.foldtext = "" -- show the folded line itself, with syntax highlighting
 opt.autocomplete = true
 opt.complete = ".^5,w^5,b^5,o"
 opt.completeopt = { "menu", "menuone", "popup", "noselect" }
+opt.completeitemalign = "kind,abbr,menu" -- icon first, then the label, then the signature
+opt.pumborder = "rounded" -- 'winborder' does not apply to the completion menu
+opt.pumheight = 12
+opt.pummaxwidth = 60 -- long signatures are cut instead of stretching the menu
 
 -- Timing
 opt.updatetime = 250
