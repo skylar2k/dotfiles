@@ -1,17 +1,25 @@
 _comp_options+=(globdots)
+
 fpath+=(~/.config/zsh/functions)
+cdpath=(~/projects)
 
 export ZVM_SYSTEM_CLIPBOARD_ENABLED=true
-export TERM=xterm-256color
+export TERM=xterm-256color   # xterm-ghostty is unknown on remote hosts and breaks ssh
 
-autoload -Uz sshp
-# push-input stashes a half-typed command line and restores it after sshp has run
+hash -d p=~/projects
+setopt auto_cd
+
+autoload -Uz sshp projects
 sshp-widget() { zle push-input; BUFFER=sshp; zle accept-line }
+pj-widget() { zle push-input; BUFFER=projects; zle accept-line; zle reset-prompt }
+
 zle -N sshp-widget
+zle -N pj-widget
 
 function zvm_after_init() {
     source <(fzf --zsh)
     zvm_bindkey vicmd 'gs' sshp-widget    # normal mode: "go ssh"
+    zvm_bindkey vicmd 'gp' pj-widget
 }
 
 

@@ -1,0 +1,3 @@
+local choice
+choice=$(print -rl -- ~/projects/*(-/N:t) | pymenu -c -i -p 'project:') || return
+cd ~/projects/$choice

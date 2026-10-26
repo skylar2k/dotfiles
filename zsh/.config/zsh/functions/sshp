@@ -1,22 +1,29 @@
 # Pick an ssh host from ~/.ssh/config with pymenu, then connect. Extra arguments go to ssh.
+# A name like "xzar.uib.no" is hidden when its short form "xzar" is also listed.
 emulate -L zsh
 setopt extended_glob
 
 (( $+commands[pymenu] )) || { print -u2 "sshp: pymenu not found"; return 1 }
 
-local file
-local -a lines hosts
+local file name
+local -a lines names entries
 for file in ~/.ssh/config(N-.) ~/.ssh/config.d/*(N-.); do
   lines+=( "${(@f)$(<$file)}" )                      # read each file: no cat
 done
 
-hosts=( ${(M)lines:#(#i)[[:space:]]#host[[:space:]]##*} )   # keep only "Host ..." lines
-hosts=( ${hosts##(#i)[[:space:]]#host[[:space:]]##} )       # drop the keyword and indentation
-hosts=( ${=hosts} )                                         # "Host a b c" -> a b c
-hosts=( ${hosts:#*[*?!]*} )                                 # drop wildcards and !negations
-(( $#hosts )) || { print -u2 "sshp: no hosts in ~/.ssh/config"; return 1 }
+names=( ${(M)lines:#(#i)[[:space:]]#host[[:space:]]##*} )   # keep only "Host ..." lines
+names=( ${names##(#i)[[:space:]]#host[[:space:]]##} )       # drop the keyword and indentation
+names=( ${=names} )                                         # "Host a b c" -> a b c
+names=( ${names:#*[*?!]*} )                                 # drop wildcards and !negations
+
+for name in $names; do
+  # a dotted name is an alias of its first label when that label is listed too
+  (( ${names[(Ie)${name%%.*}]} )) && [[ $name == *.* ]] && continue
+  entries+=( $name )
+done
+(( $#entries )) || { print -u2 "sshp: no hosts in ~/.ssh/config"; return 1 }
 
 local choice
-choice=$(print -rl -- ${(oui)hosts} | pymenu -c -i -p 'ssh:') || return
+choice=$(print -rl -- ${(oui)entries} | pymenu -c -i -p 'ssh:') || return
 [[ $choice == -* ]] && { print -u2 "sshp: not a host: $choice"; return 1 }  # typed text could look like an option
 ssh "$choice" "$@"
