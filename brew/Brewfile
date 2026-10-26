@@ -1,0 +1,50 @@
+# Checks ansible playbooks for practices and behaviour
+brew "ansible-lint"
+# Secure and free password manager for all of your devices
+brew "bitwarden-cli"
+# GNU File, Shell, and Text utilities
+brew "coreutils"
+# Simple, fast and user-friendly alternative to find
+brew "fd"
+# Command-line fuzzy finder written in Go
+brew "fzf"
+# Distributed revision control system
+brew "git"
+# Open-source GitLab command-line tool
+brew "glab"
+# Simple terminal UI for git commands
+brew "lazygit"
+# Powerful, lightweight programming language
+brew "lua"
+# Language Server for the Lua language
+brew "lua-language-server"
+# Package manager for the Lua programming language
+brew "luarocks"
+# Ambitious Vim-fork focused on extensibility and agility
+brew "neovim"
+# OpenBSD freely-licensed SSH connectivity tools
+brew "openssh"
+# Drop-in replacement for Terraform. Infrastructure as Code Tool
+brew "opentofu"
+# Fast type checker and IDE for Python
+brew "pyrefly"
+# Search tool like grep and The Silver Searcher
+brew "ripgrep"
+# Extremely fast Python linter, written in Rust
+brew "ruff"
+# Organize software neatly under a single directory tree (e.g. /usr/local)
+brew "stow"
+# Opinionated Lua code formatter
+brew "stylua"
+# Parser generator tool
+brew "tree-sitter-cli"
+# Tool for managing your YubiKey configuration
+brew "ykman"
+cask "font-symbols-only-nerd-font"
+# Software installation manager
+cask "munki"
+
+# Deliberately not listed: uv tools installed from local checkouts (graph-macos, pywm, wm-py).
+# `brew bundle` would install same-named PyPI packages instead of your projects on a new host.
+# Reinstall them by hand: `uv tool install ~/projects/<name>`.
+# `brew bundle dump --force` re-adds them and drops this note: review `git diff` after a refresh.
