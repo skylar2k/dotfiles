@@ -8,10 +8,15 @@ opt.signcolumn = "yes"
 opt.termguicolors = true
 opt.scrolloff = 8
 opt.wrap = false
+opt.winborder = "rounded"
+opt.showmode = false -- the statusline shows the mode (config/statusline.lua)
+opt.list = true
+opt.listchars = { tab = "» ", trail = "·", nbsp = "␣" }
+opt.confirm = true -- ask instead of failing when quitting with unsaved changes
 
 -- Editing
 opt.expandtab = true
-opt.shiftwidth = 2
+opt.shiftwidth = 4
 opt.tabstop = 4
 opt.smartindent = true
 opt.clipboard = "unnamedplus"
@@ -20,6 +25,7 @@ opt.undofile = true
 -- Search
 opt.ignorecase = true
 opt.smartcase = true
+opt.inccommand = "split" -- live preview of :s in a split
 
 -- Splits
 opt.splitright = true

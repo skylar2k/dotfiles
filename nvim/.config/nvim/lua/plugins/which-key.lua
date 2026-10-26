@@ -8,4 +8,7 @@ require("which-key").add({
     { "<leader>f", group = "files" },
     { "<leader>w", proxy = "<c-w>",  group = "windows" },
     { "<leader>b", group = "buffers" },
+    { "<leader>c", group = "code" },
+    { "<leader>g", group = "git" },
+    { "<leader>p", group = "project" },
 })
