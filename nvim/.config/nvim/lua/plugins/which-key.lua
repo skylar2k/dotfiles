@@ -11,4 +11,6 @@ require("which-key").add({
     { "<leader>c", group = "code" },
     { "<leader>g", group = "git" },
     { "<leader>p", group = "project" },
+    { "<leader>r", group = "run" },
+    { "<leader>t", group = "test" },
 })

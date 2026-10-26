@@ -25,6 +25,12 @@ vim.diagnostic.config({
 	float = { border = "rounded", source = "if_many" },
 })
 
+-- Inlay hints (inferred types, parameter names) on for every server that offers them; <leader>ch toggles
+vim.lsp.inlay_hint.enable(true)
+vim.keymap.set("n", "<leader>ch", function()
+	vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled())
+end, { desc = "Toggle inlay hints" })
+
 -- Completion menu: show an icon (coloured by mini.icons) in the kind column instead of the kind name
 local function convert_completion(item)
 	local name = vim.lsp.protocol.CompletionItemKind[item.kind]
@@ -56,6 +62,27 @@ vim.api.nvim_create_autocmd("LspAttach", {
 		-- Prefer the server's folding ranges over treesitter's when it has them (options.lua)
 		if client:supports_method("textDocument/foldingRange") then
 			vim.wo[vim.api.nvim_get_current_win()][0].foldexpr = "v:lua.vim.lsp.foldexpr()"
+		end
+
+		-- Highlight the other uses of the symbol under the cursor after a short pause ('updatetime')
+		if client:supports_method("textDocument/documentHighlight") then
+			local group = vim.api.nvim_create_augroup("config.lsp.highlight." .. ev.buf, { clear = true })
+			vim.api.nvim_create_autocmd({ "CursorHold", "CursorHoldI" }, {
+				group = group,
+				buffer = ev.buf,
+				callback = vim.lsp.buf.document_highlight,
+			})
+			vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "BufLeave" }, {
+				group = group,
+				buffer = ev.buf,
+				callback = vim.lsp.buf.clear_references,
+			})
+		end
+
+		-- Who calls this / what does this call (results go to the quickfix list)
+		if client:supports_method("callHierarchy/incomingCalls") then
+			vim.keymap.set("n", "<leader>ci", vim.lsp.buf.incoming_calls, { buffer = ev.buf, desc = "Incoming calls" })
+			vim.keymap.set("n", "<leader>co", vim.lsp.buf.outgoing_calls, { buffer = ev.buf, desc = "Outgoing calls" })
 		end
 
 		vim.keymap.set("n", "gd", vim.lsp.buf.definition, { buffer = ev.buf, desc = "Go to definition" })
