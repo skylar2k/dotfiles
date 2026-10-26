@@ -38,6 +38,8 @@ brew "stow"
 brew "stylua"
 # Parser generator tool
 brew "tree-sitter-cli"
+# Extremely fast Python package installer and resolver, written in Rust
+brew "uv"
 # Tool for managing your YubiKey configuration
 brew "ykman"
 cask "font-symbols-only-nerd-font"

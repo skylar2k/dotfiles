@@ -85,6 +85,10 @@ map("<leader>tn", function()
     pytest(vim.fn.expand("%:.") .. "::" .. test)
 end, "Run the test under the cursor")
 
+map("<leader>dT", function()
+    require("dap-python").test_method()
+end, "Debug the test under the cursor")
+
 map("<leader>rr", function()
     local file = vim.fn.expand("%:p")
     vim.cmd("botright split")

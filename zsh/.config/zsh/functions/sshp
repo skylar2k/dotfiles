@@ -1,0 +1,22 @@
+# Pick an ssh host from ~/.ssh/config with pymenu, then connect. Extra arguments go to ssh.
+emulate -L zsh
+setopt extended_glob
+
+(( $+commands[pymenu] )) || { print -u2 "sshp: pymenu not found"; return 1 }
+
+local file
+local -a lines hosts
+for file in ~/.ssh/config(N-.) ~/.ssh/config.d/*(N-.); do
+  lines+=( "${(@f)$(<$file)}" )                      # read each file: no cat
+done
+
+hosts=( ${(M)lines:#(#i)[[:space:]]#host[[:space:]]##*} )   # keep only "Host ..." lines
+hosts=( ${hosts##(#i)[[:space:]]#host[[:space:]]##} )       # drop the keyword and indentation
+hosts=( ${=hosts} )                                         # "Host a b c" -> a b c
+hosts=( ${hosts:#*[*?!]*} )                                 # drop wildcards and !negations
+(( $#hosts )) || { print -u2 "sshp: no hosts in ~/.ssh/config"; return 1 }
+
+local choice
+choice=$(print -rl -- ${(oui)hosts} | pymenu -c -i -p 'ssh:') || return
+[[ $choice == -* ]] && { print -u2 "sshp: not a host: $choice"; return 1 }  # typed text could look like an option
+ssh "$choice" "$@"
