@@ -36,6 +36,9 @@ end
 
 local builtin = require("telescope.builtin")
 vim.keymap.set("n", "<leader>ff", builtin.find_files, { desc = "Find files" })
+vim.keymap.set("n", "<leader>fc", function()
+    builtin.find_files({ cwd = vim.fn.stdpath("config") })
+end, { desc = "Find neovim config files" })
 vim.keymap.set("n", "<leader>fg", builtin.live_grep, { desc = "Live grep" })
 vim.keymap.set("n", "<leader>bb", builtin.buffers, { desc = "Search buffers" })
 vim.keymap.set("n", "<leader>?", builtin.help_tags, { desc = "Help tags" })

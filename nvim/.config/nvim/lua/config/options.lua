@@ -12,7 +12,7 @@ opt.wrap = false
 -- Editing
 opt.expandtab = true
 opt.shiftwidth = 2
-opt.tabstop = 2
+opt.tabstop = 4
 opt.smartindent = true
 opt.clipboard = "unnamedplus"
 opt.undofile = true
