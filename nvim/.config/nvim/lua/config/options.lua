@@ -25,6 +25,13 @@ opt.smartcase = true
 opt.splitright = true
 opt.splitbelow = true
 
+-- Completion: built-in popup as you type. Sources: current buffer, windows, loaded buffers and
+-- the buffer's omnifunc ("o", which is the language server when one is attached).
+-- Accept with <C-y>, navigate with <Tab>/<S-Tab> (keymaps.lua).
+opt.autocomplete = true
+opt.complete = ".^5,w^5,b^5,o"
+opt.completeopt = { "menu", "menuone", "popup", "noselect" }
+
 -- Timing
 opt.updatetime = 250
 opt.timeoutlen = 400
