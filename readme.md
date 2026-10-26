@@ -8,4 +8,4 @@ stow --no-folding -R -S zsh
 stow -R nvim
 ```
 
-No `--no-folding` for nvim, so `~/.config/nvim` links to the repo and `lazy-lock.json` is written back into it.
+No `--no-folding` for nvim, so `~/.config/nvim` links to the repo and `nvim-pack-lock.json` is written back into it.
