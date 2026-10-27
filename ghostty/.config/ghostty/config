@@ -1,0 +1,17 @@
+font-family = "JetBrains Mono"
+font-size = 13
+font-thicken = true
+
+window-decoration = auto
+macos-window-buttons = hidden
+macos-titlebar-style = hidden
+
+link-url = true
+link-previews = true
+
+mouse-hide-while-typing = true
+
+shell-integration = "zsh"
+shell-integration-features = "ssh-env,ssh-terminfo"
+term = "xterm-ghostty"
+
