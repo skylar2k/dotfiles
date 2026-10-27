@@ -21,7 +21,8 @@ It is safe to re-run and never overwrites existing files in `$HOME`: a conflict 
 | Package        | Linked as                                     | Stow mode                                          |
 | -------------- | --------------------------------------------- | -------------------------------------------------- |
 | `nvim`         | `~/.config/nvim` (a single symlink)           | folded, so `nvim-pack-lock.json` is written back   |
-| `ghostty`         | `~/.config/ghostty/config` (a single symlink)           | folded   |
+| `ghostty`         | `~/.config/ghostty/config`           | folded   |
+| `yazi`         | `~/.config/yazi/`           | folded   |
 | `zsh`          | `~/.zprofile`, `~/.config/zsh/*`              | `--no-folding`                                     |
 | `ssh`          | `~/.ssh/config`                               | `--no-folding`, `~/.ssh` stays a real 700 dir      |
 | `LaunchAgents` | `~/Library/LaunchAgents/*.plist`              | `--no-folding`                                     |
