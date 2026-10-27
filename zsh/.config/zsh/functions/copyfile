@@ -1,0 +1,26 @@
+# Copy the contents of files to the clipboard. Several files are joined in order.
+# With no arguments: copy what is piped in, or (at a terminal) pick one file with fzf.
+emulate -L zsh
+
+local -a files=("$@")
+local file
+
+if (( ! $# )); then
+  if [[ ! -t 0 ]]; then
+    pbcopy
+    return
+  fi
+  (( $+commands[fzf] && $+commands[fd] )) || { print -u2 "copyfile: no file given (fzf and fd are needed to pick one)"; return 1 }
+  file=$(fd --type f --hidden --exclude .git | fzf --height 40% --reverse --preview 'head -n 50 {}') || return
+  files=($file)
+fi
+
+for file in $files; do
+  [[ -f $file ]] || { print -u2 "copyfile: $file: not a regular file"; return 1 }
+  # grep -I treats binary files as non-matching; an empty file is fine to copy
+  [[ -s $file ]] && ! grep -Iq . -- $file && { print -u2 "copyfile: $file: looks like a binary file"; return 1 }
+done
+
+cat -- $files | pbcopy
+local count=$(cat -- $files | grep -c '')
+print "Copied $count line${${count:#1}:+s} from ${(j:, :)files:t}"
