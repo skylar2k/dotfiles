@@ -1,0 +1,19 @@
+# Run yazi, then cd the shell to the directory yazi was in when you quit. Arguments go to yazi.
+emulate -L zsh
+
+(( $+commands[yazi] )) || { print -u2 "y: yazi not found"; return 1 }
+
+local tmp cwd ret
+tmp=$(mktemp -t yazi-cwd.XXXXXX) || return
+
+# The always block removes the temp file even if the function is interrupted (Ctrl-C) or fails
+{
+  command yazi "$@" --cwd-file=$tmp
+  ret=$?
+  cwd=$(<$tmp)
+  [[ -n $cwd && $cwd != $PWD && -d $cwd ]] && builtin cd -- $cwd   # builtin cd still runs chpwd hooks
+} always {
+  [[ -n $tmp && -f $tmp ]] && command rm -f -- $tmp
+}
+
+return $ret
