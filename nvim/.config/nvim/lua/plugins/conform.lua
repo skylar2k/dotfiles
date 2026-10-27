@@ -1,6 +1,7 @@
 -- Formatters are external tools and must be installed separately:
 --   stylua: `brew install stylua`
 --   ruff:   `uv tool install ruff`
+--   prettier (Markdown): `brew install prettier`
 -- `:ConformInfo` shows which formatters are available for the current buffer.
 vim.pack.add({
     "https://github.com/stevearc/conform.nvim",
@@ -12,6 +13,7 @@ conform.setup({
     formatters_by_ft = {
         lua = { "stylua" },
         python = { "ruff_organize_imports", "ruff_format" },
+        markdown = { "prettier" },
     },
     -- Filetypes without a formatter above fall back to the language server, if it can format
     format_on_save = { timeout_ms = 1000, lsp_format = "fallback" },
