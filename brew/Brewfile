@@ -42,6 +42,7 @@ brew "tree-sitter-cli"
 brew "uv"
 # Tool for managing your YubiKey configuration
 brew "ykman"
+brew "yazi"
 cask "font-symbols-only-nerd-font"
 # Software installation manager
 cask "munki"
