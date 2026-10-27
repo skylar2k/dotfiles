@@ -116,7 +116,7 @@ Servers: **pyrefly** (Python) and **lua_ls** (Lua). Hover, rename and the other 
 | `gO` | Symbols of this file in a list *(default)* |
 | `<C-s>` (insert) | Signature help *(default)* |
 | `<leader>ci` / `<leader>co` | Incoming / outgoing calls (go to quickfix) |
-| `<leader>ch` | Toggle inlay hints (on by default) |
+| `<leader>ch` | Toggle inlay hints (on by default; Python hints refresh 1 s after you stop typing) |
 | `<leader>cf` | Format the buffer or the selection |
 
 Formatting also runs on save: stylua for Lua, ruff (imports, then format) for Python.

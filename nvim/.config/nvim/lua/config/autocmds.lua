@@ -22,6 +22,18 @@ vim.api.nvim_create_autocmd("BufReadPost", {
     end,
 })
 
+-- No automatic completion menu where it only gets in the way: prompts (Telescope's search box and
+-- the like) and oil, where you type file names. 'autocomplete' is global-local, so this only
+-- touches those buffers; Ctrl-N / Ctrl-X completion still works there on demand.
+vim.api.nvim_create_autocmd({ "FileType", "BufEnter" }, {
+    group = group,
+    callback = function(ev)
+        if vim.bo[ev.buf].buftype == "prompt" or vim.bo[ev.buf].filetype == "oil" then
+            vim.bo[ev.buf].autocomplete = false
+        end
+    end,
+})
+
 -- Keep splits equal when the terminal is resized
 vim.api.nvim_create_autocmd("VimResized", {
     group = group,

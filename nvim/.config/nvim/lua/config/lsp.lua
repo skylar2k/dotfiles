@@ -31,6 +31,9 @@ vim.keymap.set("n", "<leader>ch", function()
 	vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled())
 end, { desc = "Toggle inlay hints" })
 
+-- How soon hints refresh after an edit is the server's setting: for pyrefly see inlayHintDebounceMs
+-- in lsp/pyrefly.lua (they stay put while you type and update once, after you pause).
+
 -- Completion menu: show an icon (coloured by mini.icons) in the kind column instead of the kind name
 local function convert_completion(item)
 	local name = vim.lsp.protocol.CompletionItemKind[item.kind]
