@@ -111,6 +111,7 @@ if command -v stow >/dev/null; then
     stow_package zsh nofold
     stow_package ghostty fold
     stow_package yazi fold
+    stow_package asm-lsp fold
     stow_package ssh nofold
     stow_package LaunchAgents nofold
 elif ((DRY_RUN)); then

@@ -8,7 +8,10 @@ local ts = require("nvim-treesitter")
 ts.setup()
 
 -- Installs only what is missing, asynchronously (:checkhealth nvim-treesitter shows the state)
-local install = ts.install({ "python", "bash", "zsh", "json", "toml", "yaml", "regex", "diff", "gitcommit" })
+local install = ts.install({
+	"python", "bash", "zsh", "json", "toml", "yaml", "regex", "diff", "gitcommit",
+	"zig", "asm",
+})
 if vim.env.NVIM_BOOTSTRAP then
 	install:wait(300000) -- bootstrap.sh runs nvim headless; don't quit before the parsers are built
 end

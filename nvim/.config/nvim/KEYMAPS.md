@@ -101,7 +101,8 @@ The working directory decides where Telescope searches and where tests run.
 
 ## Code: LSP, diagnostics, format
 
-Servers: **pyrefly** (Python) and **lua_ls** (Lua). Hover, rename and the other `gr` keys are Neovim defaults.
+Servers: **pyrefly** (Python), **lua_ls** (Lua), **zls** (Zig) and **asm-lsp** (ARM64 assembly, set in
+`~/.config/asm-lsp/.asm-lsp.toml`). Hover, rename and the other `gr` keys are Neovim defaults.
 
 | Key | Action |
 | --- | --- |
@@ -119,7 +120,8 @@ Servers: **pyrefly** (Python) and **lua_ls** (Lua). Hover, rename and the other 
 | `<leader>ch` | Toggle inlay hints (on by default; Python hints refresh 1 s after you stop typing) |
 | `<leader>cf` | Format the buffer or the selection |
 
-Formatting also runs on save: stylua for Lua, ruff (imports, then format) for Python.
+Formatting also runs on save: stylua for Lua, ruff (imports, then format) for Python, prettier for Markdown and
+`zig fmt` for Zig. There is no formatter for assembly.
 
 Diagnostics:
 

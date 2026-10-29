@@ -1,5 +1,7 @@
 # Checks ansible playbooks for practices and behaviour
 brew "ansible-lint"
+# Language server for NASM/GAS/GO Assembly
+brew "asm-lsp"
 # Secure and free password manager for all of your devices
 brew "bitwarden-cli"
 # GNU File, Shell, and Text utilities
@@ -20,6 +22,7 @@ brew "lua"
 brew "lua-language-server"
 # Package manager for the Lua programming language
 brew "luarocks"
+brew "zig"
 # Ambitious Vim-fork focused on extensibility and agility
 brew "neovim"
 # OpenBSD freely-licensed SSH connectivity tools
@@ -45,6 +48,8 @@ brew "uv"
 # Tool for managing your YubiKey configuration
 brew "ykman"
 brew "yazi"
+# Language Server for Zig (needs zig, which is listed above)
+brew "zls"
 cask "font-symbols-only-nerd-font"
 # Software installation manager
 cask "munki"

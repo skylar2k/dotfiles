@@ -1,0 +1,10 @@
+# Default for every assembly file that is not inside a project with its own .asm-lsp.toml:
+# ARM64 in GNU syntax, which is what clang and `as` use on Apple Silicon.
+# The compiler used for diagnostics is picked by asm-lsp itself (gcc, then clang).
+[default_config]
+assembler = "gas"
+instruction_set = "arm64"
+
+[opts]
+diagnostics = true
+default_diagnostics = true

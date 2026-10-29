@@ -2,7 +2,9 @@
 -- Each server binary has to be installed separately:
 --   pyrefly: `brew install pyrefly` or `uv tool install pyrefly`
 --   lua_ls:  `brew install lua-language-server`
-local servers = { "lua_ls", "pyrefly" }
+--   zls:     `brew install zls` (needs zig)
+--   asm_lsp: `brew install asm-lsp`
+local servers = { "lua_ls", "pyrefly", "zls", "asm_lsp" }
 
 local missing = {}
 for _, name in ipairs(servers) do
