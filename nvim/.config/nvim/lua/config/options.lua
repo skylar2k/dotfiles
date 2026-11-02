@@ -1,7 +1,7 @@
 local opt = vim.opt
 
 -- UI
-opt.number = true
+opt.number = true -- with relativenumber: the cursor line shows its absolute number, for `42gg`
 opt.relativenumber = true
 opt.cursorline = true
 opt.signcolumn = "yes"
@@ -41,7 +41,7 @@ opt.foldtext = "" -- show the folded line itself, with syntax highlighting
 
 -- Completion: built-in popup as you type. Sources: current buffer, windows, loaded buffers and
 -- the buffer's omnifunc ("o", which is the language server when one is attached).
--- Accept with <C-y>, navigate with <Tab>/<S-Tab> (keymaps.lua).
+-- Accept with <C-y>, pick with <C-n>/<C-p>; <Tab> never touches the menu (keymaps.lua).
 opt.autocomplete = true
 opt.complete = ".^5,w^5,b^5,o"
 opt.completeopt = { "menu", "menuone", "popup", "noselect" }

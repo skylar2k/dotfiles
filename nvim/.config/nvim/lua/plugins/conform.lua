@@ -1,7 +1,7 @@
 -- Formatters are external tools and must be installed separately:
 --   stylua: `brew install stylua`
 --   ruff:   `uv tool install ruff`
---   prettier (Markdown): `brew install prettier`
+--   prettier (Markdown, YAML): `brew install prettier`
 --   zigfmt (Zig): part of zig, `brew install zig`
 -- `:ConformInfo` shows which formatters are available for the current buffer.
 vim.pack.add({
@@ -15,6 +15,7 @@ conform.setup({
         lua = { "stylua" },
         python = { "ruff_organize_imports", "ruff_format" },
         markdown = { "prettier" },
+        yaml = { "prettier" },
         zig = { "zigfmt" },
     },
     -- Filetypes without a formatter above fall back to the language server, if it can format

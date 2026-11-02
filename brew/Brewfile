@@ -1,9 +1,13 @@
+tap "felixkratz/formulae"
 # Checks ansible playbooks for practices and behaviour
 brew "ansible-lint"
+brew "bitwise"
 # Language server for NASM/GAS/GO Assembly
 brew "asm-lsp"
 # Secure and free password manager for all of your devices
 brew "bitwarden-cli"
+# Window border system for macOS (config: borders/, started with `brew services start borders`)
+brew "felixkratz/formulae/borders"
 # GNU File, Shell, and Text utilities
 brew "coreutils"
 # Simple, fast and user-friendly alternative to find
@@ -45,6 +49,8 @@ brew "stylua"
 brew "tree-sitter-cli"
 # Extremely fast Python package installer and resolver, written in Rust
 brew "uv"
+# Language server for YAML files
+brew "yaml-language-server"
 # Tool for managing your YubiKey configuration
 brew "ykman"
 brew "yazi"

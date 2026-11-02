@@ -24,6 +24,7 @@ It is safe to re-run and never overwrites existing files in `$HOME`: a conflict 
 | `ghostty`         | `~/.config/ghostty/config`           | folded   |
 | `yazi`         | `~/.config/yazi/`           | folded   |
 | `asm-lsp`      | `~/.config/asm-lsp/` (ARM64 default config)   | folded                                             |
+| `borders`      | `~/.config/borders/bordersrc` (dwm look)      | folded                                             |
 | `zsh`          | `~/.zprofile`, `~/.config/zsh/*`              | `--no-folding`                                     |
 | `ssh`          | `~/.ssh/config`                               | `--no-folding`, `~/.ssh` stays a real 700 dir      |
 | `LaunchAgents` | `~/Library/LaunchAgents/*.plist`              | `--no-folding`                                     |

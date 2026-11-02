@@ -4,7 +4,8 @@
 --   lua_ls:  `brew install lua-language-server`
 --   zls:     `brew install zls` (needs zig)
 --   asm_lsp: `brew install asm-lsp`
-local servers = { "lua_ls", "pyrefly", "zls", "asm_lsp" }
+--   yamlls:  `brew install yaml-language-server`
+local servers = { "lua_ls", "pyrefly", "zls", "asm_lsp", "yamlls" }
 
 local missing = {}
 for _, name in ipairs(servers) do

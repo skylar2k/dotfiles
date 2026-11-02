@@ -13,6 +13,7 @@ Keys marked *(default)* come from Neovim or a plugin, not from this config.
 - [Git](#git)
 - [Python: run, test, debug](#python-run-test-debug)
 - [Editing: pairs, surround, comments, folds](#editing-pairs-surround-comments-folds)
+- [Markdown and Obsidian vaults](#markdown-and-obsidian-vaults)
 - [Completion](#completion)
 - [Lists and jumping](#lists-and-jumping)
 - [Nordic layout notes](#nordic-layout-notes)
@@ -94,6 +95,7 @@ The working directory decides where Telescope searches and where tests run.
 | `<leader>bD` | Delete buffer and discard changes |
 | `<leader>bb` | Search open buffers |
 | `<leader>q` | Quit |
+| `<leader>z` | Zen mode: this buffer in a centred 100-column window, no numbers or statusline; press again to leave |
 | `<Esc>` | Clear search highlight |
 | `<leader>w` + key | Any `<C-w>` window command: `h` `j` `k` `l` move, `s` / `v` split, `c` close, `o` only, `=` equalize, `H` `J` `K` `L` move the window, `d` diagnostic float |
 | `[b` / `]b` | Previous / next buffer *(default)* |
@@ -101,8 +103,8 @@ The working directory decides where Telescope searches and where tests run.
 
 ## Code: LSP, diagnostics, format
 
-Servers: **pyrefly** (Python), **lua_ls** (Lua), **zls** (Zig) and **asm-lsp** (ARM64 assembly, set in
-`~/.config/asm-lsp/.asm-lsp.toml`). Hover, rename and the other `gr` keys are Neovim defaults.
+Servers: **pyrefly** (Python), **lua_ls** (Lua), **zls** (Zig), **yaml-language-server** (YAML, with schemas from schemastore.org for GitHub workflows,
+docker-compose and the like) and **asm-lsp** (ARM64 assembly, set in `~/.config/asm-lsp/.asm-lsp.toml`). Hover, rename and the other `gr` keys are Neovim defaults.
 
 | Key | Action |
 | --- | --- |
@@ -121,7 +123,7 @@ Servers: **pyrefly** (Python), **lua_ls** (Lua), **zls** (Zig) and **asm-lsp** (
 | `<leader>cf` | Format the buffer or the selection |
 
 Formatting also runs on save: stylua for Lua, ruff (imports, then format) for Python, prettier for Markdown and
-`zig fmt` for Zig. There is no formatter for assembly.
+YAML, and `zig fmt` for Zig. There is no formatter for assembly.
 
 Diagnostics:
 
@@ -207,15 +209,47 @@ Built-in Python motions: `]m` / `[m` next / previous def or class, `]]` / `[[` t
 | `zR` | Open all folds |
 | `za` | Toggle the fold under the cursor |
 
+## Markdown and Obsidian vaults
+
+Every Markdown file is rendered in normal mode (headings, code blocks, tables, checkboxes, callouts, links) by
+render-markdown.nvim; insert mode shows the plain text. Lines wrap at word boundaries. Prettier formats on save.
+
+| Key | Action |
+| --- | --- |
+| `<leader>mr` | Toggle the rendering in this buffer |
+
+Notes inside an Obsidian vault get the vault features on top. A vault is a folder with a `.obsidian` directory, one
+level below `~/Documents`, `~/Notes` or the Obsidian iCloud folder (edit the lists at the top of
+`lua/plugins/obsidian.lua` for other places). Outside a vault none of this is active.
+
+| Key | Action |
+| --- | --- |
+| `<CR>` | On a link follow it, on a tag list its notes, on a checkbox toggle it |
+| `]o` / `[o` | Next / previous link in the note |
+| `<leader>oo` | Open a note (Telescope) |
+| `<leader>on` | New note |
+| `<leader>os` | Search the vault |
+| `<leader>ot` | Find notes by tag |
+| `<leader>od` / `<leader>oD` | Today's daily note / pick a daily note |
+| `<leader>ob` | Backlinks of this note |
+| `<leader>ol` | Links in this note |
+| `<leader>oc` | Table of contents |
+| `<leader>or` | Rename the note and update links to it |
+| `<leader>ow` | Switch vault |
+
+`:Obsidian` lists the other commands (templates, pasting images, `check`). Completion of `[[` links comes from the
+language-server completion.
+
 ## Completion
 
 The menu opens as you type, from the language server, with an icon per kind.
 
 | Key | Action |
 | --- | --- |
-| `<Tab>` / `<S-Tab>` | Next / previous item while the menu is open |
+| `<C-n>` / `<C-p>` | Next / previous item *(default)* |
 | `<C-y>` | Accept the item, including snippets and import edits |
 | `<C-e>` | Close the menu |
+| `<Tab>` / `<S-Tab>` | Never touch the menu: jump through snippet fields, or indent / dedent |
 | `<C-x><C-n>` | Complete from words in the current file |
 
 ## Lists and jumping

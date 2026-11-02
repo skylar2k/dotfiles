@@ -112,6 +112,7 @@ if command -v stow >/dev/null; then
     stow_package ghostty fold
     stow_package yazi fold
     stow_package asm-lsp fold
+    stow_package borders fold
     stow_package ssh nofold
     stow_package LaunchAgents nofold
 elif ((DRY_RUN)); then
@@ -133,6 +134,15 @@ else
         run launchctl bootstrap "gui/$(id -u)" "$installed" ||
             warn "could not load $label now; launchd will load it at next login"
     done
+fi
+
+# --- Window borders (JankyBorders) ---------------------------------------------------------------------
+if ((SKIP_BREW)); then
+    :
+elif command -v borders >/dev/null || ((DRY_RUN)); then
+    say "Window borders"
+    # The service runs `borders`, which reads ~/.config/borders/bordersrc; starting it twice is harmless
+    run brew services start borders || warn "could not start the borders service"
 fi
 
 # --- Neovim ------------------------------------------------------------------------------------------
