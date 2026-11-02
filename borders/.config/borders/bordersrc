@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# JankyBorders, styled like dwm's default theme: 1px square borders, the selected window in dwm's
+# cyan (col_cyan #005577) and every other window in its dark gray (col_gray2 #444444).
+# `borders` runs this file when it starts without arguments (brew services start borders);
+# run it by hand to apply a change to the running instance.
+
+options=(
+    style=rounded
+    width=8.0
+    hidpi=on # draw the 1px line at retina resolution so it stays a single pixel
+    active_color=0xff005577
+    inactive_color=0xff444444
+)
+
+borders "${options[@]}"
