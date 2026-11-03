@@ -1,0 +1,5 @@
+# antidote, the zsh plugin manager (workstations only, see .chezmoiignore). Pulled again weekly by `chezmoi apply`.
+[".config/zsh/.antidote"]
+    type = "git-repo"
+    url = "https://github.com/mattmc3/antidote.git"
+    refreshPeriod = "168h"

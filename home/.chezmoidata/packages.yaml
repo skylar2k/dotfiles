@@ -1,0 +1,49 @@
+# Packages for a Linux workstation, installed by .chezmoiscripts/run_onchange_after_10-linux-packages.sh.tmpl.
+# macOS uses ~/.config/homebrew/Brewfile instead. Editing a list reruns the script on the next `chezmoi apply`.
+packages:
+  arch:
+    - chezmoi
+    - fd
+    - fzf
+    - ghostty
+    - git
+    - glab
+    - lazygit
+    - lua
+    - lua-language-server
+    - neovim
+    - nodejs
+    - prettier
+    - ripgrep
+    - ruff
+    - stylua
+    - tree-sitter-cli
+    - uv
+    - wl-clipboard
+    - yaml-language-server
+    - yazi
+    - yubikey-manager
+    - zig
+    - zls
+    - zsh
+  # Gentoo main tree only. Not in it: zls, stylua, lua-language-server, yazi, lazygit, glab, prettier and
+  # yaml-language-server; get them from the GURU overlay, `npm -g` or a release binary in ~/.local/bin.
+  gentoo:
+    - app-crypt/yubikey-manager
+    - app-editors/neovim
+    - app-shells/fzf
+    - app-shells/zsh
+    - dev-lang/lua
+    - dev-lang/zig
+    - dev-python/uv
+    - dev-util/ruff
+    - dev-util/tree-sitter-cli
+    - dev-vcs/git
+    - gui-apps/wl-clipboard
+    - net-libs/nodejs
+    - sys-apps/fd
+    - sys-apps/ripgrep
+    - x11-terms/ghostty
+  # Not packaged by either distro: installed with `uv tool install` once uv exists
+  uvTools:
+    - pyrefly

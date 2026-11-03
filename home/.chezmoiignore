@@ -1,0 +1,39 @@
+{{- /* Target paths (relative to $HOME) that this machine does not get. */ -}}
+
+{{- if eq .role "guest" }}
+# A shared account: nothing outside ~/.config/skylar-* is touched
+.zshenv
+.bashrc
+.bash_profile
+.ssh
+Library
+.config/*
+!.config/skylar-*
+{{- else }}
+.config/skylar-*
+{{- end }}
+
+{{- if ne .role "workstation" }}
+# Desktop and development tools are for workstations only
+.zshenv
+.config/zsh
+.config/ghostty
+.config/yazi
+.config/asm-lsp
+.config/borders
+.config/homebrew
+.ssh
+Library
+{{- end }}
+
+{{- if ne .role "server" }}
+.bashrc
+.bash_profile
+{{- end }}
+
+{{- if ne .chezmoi.os "darwin" }}
+# macOS only
+Library
+.config/borders
+.config/homebrew
+{{- end }}

@@ -1,0 +1,15 @@
+# ~/.bashrc on servers (role "server"). The distro's defaults load first; host-only tweaks go in ~/.bashrc.local.
+[ -f /etc/bashrc ] && . /etc/bashrc          # Fedora, RHEL
+[ -f /etc/bash.bashrc ] && . /etc/bash.bashrc # Debian, Ubuntu, Arch
+case $- in *i*) ;; *) return ;; esac          # the rest is for interactive shells only
+
+{{ template "server-shell" . }}
+
+set -o vi
+HISTSIZE=10000
+HISTFILESIZE=20000
+HISTCONTROL=ignoreboth
+shopt -s histappend checkwinsize
+PS1='\[\e[1;31m\]\h\[\e[0m\]:\[\e[34m\]\w\[\e[0m\]\$ ' # hostname in red: you are on a server
+
+[ -f ~/.bashrc.local ] && . ~/.bashrc.local

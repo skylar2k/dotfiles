@@ -1,0 +1,14 @@
+# Interactive settings for the guest shell; no plugin manager, so nothing is downloaded on the shared account
+{{ template "server-shell" . }}
+export NVIM_APPNAME=skylar-nvim                      # Neovim uses ~/.config/skylar-nvim and its own data dirs
+export GIT_CONFIG_GLOBAL=~/.config/skylar-git/config # your git identity, not the account's
+
+HISTFILE=$ZDOTDIR/.zsh_history
+HISTSIZE=10000
+SAVEHIST=10000
+setopt share_history hist_ignore_dups auto_cd
+
+bindkey -v
+KEYTIMEOUT=1
+autoload -Uz compinit && compinit -d $ZDOTDIR/.zcompdump
+PROMPT='%F{magenta}%B{{ .name | splitList " " | first | lower }}@%m%b%f:%F{blue}%~%f %# '

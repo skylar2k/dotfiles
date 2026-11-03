@@ -1,0 +1,36 @@
+{{- /*
+  Shared by ~/.config/git/config and the guest copy in ~/.config/skylar-git/config.
+  Include paths are relative to the including file, so both directories work.
+  Default identity: personal on a workstation, work on a work server or guest account.
+*/ -}}
+[user]
+	name = {{ .name }}
+{{- if and .work (ne .role "workstation") }}
+	email = {{ .workEmail }}
+{{- else }}
+	email = {{ .email }}
+{{- end }}
+{{- if .signingKey }}
+	signingkey = {{ .signingKey }}
+[gpg]
+	format = ssh
+[commit]
+	gpgsign = true
+[tag]
+	gpgSign = true
+{{- end }}
+[init]
+	defaultBranch = main
+{{- if .work }}
+
+# Work repos (itgit) commit as the work identity, GitHub repos as the personal one, anything else as the default
+# above. In these globs `**` only crosses `/` when a slash is next to it, hence `:*/**` for scp-style URLs.
+[includeIf "hasconfig:remote.*.url:git@itgit.app.uib.no:*/**"]
+	path = config-work
+[includeIf "hasconfig:remote.*.url:itgit:*/**"]
+	path = config-work
+[includeIf "hasconfig:remote.*.url:https://itgit.app.uib.no/**"]
+	path = config-work
+[includeIf "hasconfig:remote.*.url:git@github.com:*/**"]
+	path = config-personal
+{{- end }}

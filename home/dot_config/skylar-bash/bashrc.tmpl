@@ -1,0 +1,11 @@
+# Your shell on a shared Linux account (role "guest"). The account's own files stay untouched:
+#   bash --rcfile ~/.config/skylar-bash/bashrc -i     (or `ssh <host>-me` from your workstation)
+[ -f ~/.bashrc ] && . ~/.bashrc # the account's own setup first
+
+{{ template "server-shell" . }}
+export NVIM_APPNAME=skylar-nvim                      # Neovim uses ~/.config/skylar-nvim and its own data dirs
+export GIT_CONFIG_GLOBAL=~/.config/skylar-git/config # your git identity, not the account's
+export HISTFILE=~/.config/skylar-bash/history
+
+set -o vi
+PS1='\[\e[1;35m\]{{ .name | splitList " " | first | lower }}@\h\[\e[0m\]:\[\e[34m\]\w\[\e[0m\]\$ '

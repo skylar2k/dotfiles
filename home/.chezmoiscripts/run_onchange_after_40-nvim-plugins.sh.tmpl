@@ -1,0 +1,18 @@
+#!/bin/bash
+# Bring the Neovim plugins to the revisions in the lockfile whenever it changes (an update made on another
+# machine): {{ include (joinPath .chezmoi.workingTree "nvim/nvim-pack-lock.json") | sha256sum }}
+set -euo pipefail
+[[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
+{{ if ne .role "workstation" -}}
+export NVIM_PROFILE=lite
+{{ end -}}
+{{ if eq .role "guest" -}}
+export NVIM_APPNAME=skylar-nvim # the shared account's own Neovim is not touched
+{{ end -}}
+if command -v nvim >/dev/null; then
+    # Starting installs missing plugins; target = "lockfile" moves the installed ones to the locked commits
+    # without asking. NVIM_BOOTSTRAP makes the treesitter config wait for parsers to compile before nvim exits.
+    NVIM_BOOTSTRAP=1 nvim --headless "+lua vim.pack.update(nil, { target = 'lockfile', force = true })" "+qa"
+else
+    echo "nvim not found, skipping plugin install" >&2
+fi

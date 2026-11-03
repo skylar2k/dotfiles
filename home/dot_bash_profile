@@ -1,0 +1,3 @@
+# Login shells (ssh) read this, not ~/.bashrc
+[ -f ~/.profile ] && . ~/.profile
+[ -f ~/.bashrc ] && . ~/.bashrc

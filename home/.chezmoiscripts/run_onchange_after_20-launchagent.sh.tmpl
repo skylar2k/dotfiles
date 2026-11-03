@@ -1,0 +1,9 @@
+{{ if and (eq .chezmoi.os "darwin") (eq .role "workstation") -}}
+#!/bin/bash
+# (Re)load the key-remap launch agent whenever the plist changes: {{ include "Library/LaunchAgents/rs.unix.hidutil-rebind.plist" | sha256sum }}
+set -euo pipefail
+plist="$HOME/Library/LaunchAgents/rs.unix.hidutil-rebind.plist"
+label=$(/usr/libexec/PlistBuddy -c 'Print :Label' "$plist")
+launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true # fails harmlessly when it was not loaded
+launchctl bootstrap "gui/$(id -u)" "$plist" || echo "could not load $label now; launchd loads it at next login" >&2
+{{ end -}}

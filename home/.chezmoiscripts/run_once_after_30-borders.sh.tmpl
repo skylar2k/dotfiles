@@ -1,0 +1,7 @@
+{{ if and (eq .chezmoi.os "darwin") (eq .role "workstation") -}}
+#!/bin/bash
+# Window borders; the service runs `borders`, which reads ~/.config/borders/bordersrc
+set -euo pipefail
+eval "$(/opt/homebrew/bin/brew shellenv)"
+brew services start borders || echo "could not start the borders service" >&2
+{{ end -}}

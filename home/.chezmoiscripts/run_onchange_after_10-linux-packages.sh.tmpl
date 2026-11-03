@@ -1,0 +1,18 @@
+{{ if and (eq .chezmoi.os "linux") (eq .role "workstation") -}}
+#!/bin/bash
+# Runs again whenever .chezmoidata/packages.yaml changes: {{ .packages | toJson | sha256sum }}
+set -euo pipefail
+{{ $id := get .chezmoi.osRelease "id" | default "" -}}
+{{ if eq $id "arch" -}}
+sudo pacman -S --needed --noconfirm {{ .packages.arch | join " " }}
+{{ else if eq $id "gentoo" -}}
+sudo emerge --noreplace --ask=n {{ .packages.gentoo | join " " }}
+{{ else -}}
+echo "chezmoi: no package list for '{{ $id }}'; install the tools by hand" >&2
+{{ end -}}
+if command -v uv >/dev/null; then
+    for tool in {{ .packages.uvTools | join " " }}; do
+        uv tool list | grep -q "^$tool " || uv tool install "$tool"
+    done
+fi
+{{ end -}}

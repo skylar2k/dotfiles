@@ -1,0 +1,34 @@
+{{- /*
+  Asked once per machine by `chezmoi init`; the answers are stored in ~/.config/chezmoi/chezmoi.toml
+  (never in this repo). Re-ask with `chezmoi init --prompt`.
+
+  role:
+    workstation  this Mac or the personal Linux box: everything, packages included
+    server       a Linux host with your own account: bash, git, lite Neovim
+    guest        a shared account: only ~/.config/skylar-*, loaded when you ask for it
+*/ -}}
+{{- $role := promptChoiceOnce . "role" "Machine role" (list "workstation" "server" "guest") -}}
+{{- $work := promptBoolOnce . "work" "Work machine (UiB)" -}}
+{{- $name := promptStringOnce . "name" "Full name for git" -}}
+{{- $email := promptStringOnce . "email" "Personal git email" -}}
+{{- $workEmail := "" -}}
+{{- if $work -}}
+{{-   $workEmail = promptStringOnce . "workEmail" "Work git email" -}}
+{{- end -}}
+{{- $signingKey := "" -}}
+{{- if eq $role "workstation" -}}
+{{-   $signingKey = promptStringOnce . "signingKey" "SSH signing key (path to the .pub; empty for none)" -}}
+{{- end -}}
+
+# Plain files are symlinks into the source, so editing them in $HOME edits the repo.
+# Templates, private and executable files are written as real files: change those in the source.
+mode = "symlink"
+sourceDir = {{ .chezmoi.sourceDir | dir | quote }}
+
+[data]
+role = {{ $role | quote }}
+work = {{ $work }}
+name = {{ $name | quote }}
+email = {{ $email | quote }}
+workEmail = {{ $workEmail | quote }}
+signingKey = {{ $signingKey | quote }}

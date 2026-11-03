@@ -1,0 +1,60 @@
+{{- /* UiB hosts only on work machines; ssh-me aliases from .chezmoidata/hosts.yaml */ -}}
+{{ if .work -}}
+Host p1kdlogin
+    HostName p1kdlogin.uib.no
+    User skjoh4753
+    ControlMaster auto
+    ControlPath ~/.ssh/cm/%C
+    ControlPersist 8h
+    ServerAliveInterval 30
+    SetEnv TERM=xterm-256color
+
+Host minsc
+    HostName minsc.uib.no
+    Tag via_p1kdlogin
+
+Host zargal
+    HostName zargal.uib.no
+    Tag via_p1kdlogin
+
+Host xzar
+    HostName xzar.uib.no
+    Tag via_p1kdlogin
+
+Host turg
+    HostName turg.uib.no
+    Tag via_p1kdlogin
+
+Host itgit itgit.app.uib.no
+    HostName itgit.app.uib.no
+    User git
+    SetEnv TERM=xterm-256color
+
+# Apply jumphost settings to anything tagged (but never the p1kdlogin itself)
+Match tagged via_p1kdlogin !originalhost p1kdlogin
+    ProxyJump p1kdlogin
+    User skjoh
+    ControlMaster auto
+    ControlPath ~/.ssh/cm/%C
+    ControlPersist 8h
+    ServerAliveInterval 30
+    SetEnv TERM=xterm-256color
+{{- end }}
+{{- range .guestHosts }}
+
+# Your own setup on a shared account ({{ .hostname }}); plain `ssh {{ .name }}` stays the account's own
+Host {{ .name }}-me
+    HostName {{ .hostname }}
+{{- if hasKey . "user" }}
+    User {{ .user }}
+{{- end }}
+    RequestTTY yes
+{{- if eq (get . "shell" | default "zsh") "bash" }}
+    RemoteCommand NVIM_APPNAME=skylar-nvim exec bash --rcfile ~/.config/skylar-bash/bashrc -i
+{{- else }}
+    RemoteCommand ZDOTDIR=~/.config/skylar-zsh exec zsh -l
+{{- end }}
+{{- end }}
+
+Host *
+    ServerAliveInterval 60
