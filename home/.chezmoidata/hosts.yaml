@@ -4,4 +4,8 @@
 #     hostname: sharedmac.uib.no
 #     user: admin                # optional
 #     shell: zsh                 # zsh (macOS) or bash (Linux)
-guestHosts: []
+guestHosts:
+  - name: eplebakst3
+    hostname: eplebakst3.uib.no
+    user: munki
+    shell: zsh
