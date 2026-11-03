@@ -3,7 +3,7 @@
 # Two lines: where you are and what is going on, then the prompt character on its own line.
 # The host shows only over ssh, the user only over ssh or as root. Colours are the terminal's own (TokyoNight Moon).
 format = """
-$username$hostname$directory$git_branch$git_state$git_status$python$lua$zig$nodejs$jobs$cmd_duration
+${env_var.SSH_CONNECTION}$username$hostname$directory$git_branch$git_state$git_status$python$lua$zig$nodejs$jobs$cmd_duration
 $character"""
 add_newline = true
 command_timeout = 500 # ms; a slow git status is cut off instead of freezing the prompt
@@ -19,10 +19,13 @@ format = "[$user]($style)@"
 style_user = "bold yellow"
 style_root = "bold red"
 
+[env_var.SSH_CONNECTION] # set only in ssh sessions: an icon in front of user@host
+format = "[ ]($style)" # nf-cod-remote; the 󰣀 "SSH" glyph is unreadable at one cell wide
+style = "bold green"
+
 [hostname]
 ssh_only = true
-ssh_symbol = " " # nf-cod-remote; the 󰣀 "SSH" glyph is unreadable at one cell wide
-format = "[$ssh_symbol$hostname]($style) "
+format = "[$hostname]($style) "
 style = "bold green"
 
 [directory]
