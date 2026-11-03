@@ -21,7 +21,7 @@ style_root = "bold red"
 
 [hostname]
 ssh_only = true
-ssh_symbol = "󰣀 "
+ssh_symbol = " " # nf-cod-remote; the 󰣀 "SSH" glyph is unreadable at one cell wide
 format = "[$ssh_symbol$hostname]($style) "
 style = "bold green"
 
