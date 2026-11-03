@@ -32,8 +32,39 @@ zle -N pj-widget
 zle -N copyfile-widget
 zle -N yazi-widget
 
+# fzf: TokyoNight Moon colours (tokyonight.nvim's extras/fzf), previews for Ctrl-T (files) and Alt-C (directories)
+export FZF_DEFAULT_OPTS="--height=40% --layout=reverse --border=rounded --info=inline-right --highlight-line --ansi \
+  --color=bg+:#2d3f76,bg:#1e2030,border:#589ed7,fg:#c8d3f5,gutter:#1e2030,header:#ff966c,hl+:#65bcff,hl:#65bcff \
+  --color=info:#545c7e,marker:#ff007c,pointer:#ff007c,prompt:#65bcff,query:#c8d3f5:regular,scrollbar:#589ed7 \
+  --color=separator:#ff966c,spinner:#ff007c"
+if (( $+commands[fd] )); then
+    export FZF_DEFAULT_COMMAND='fd --type f --hidden --exclude .git'
+    export FZF_CTRL_T_COMMAND=$FZF_DEFAULT_COMMAND
+    export FZF_ALT_C_COMMAND='fd --type d --hidden --exclude .git'
+fi
+if (( $+commands[bat] )); then
+    export BAT_THEME=ansi # bat uses the terminal's colours
+    export MANPAGER="sh -c 'col -bx | bat --language=man --plain'" # man pages with highlighting
+    export FZF_CTRL_T_OPTS="--preview 'bat --color=always --style=numbers --line-range=:300 {}'"
+else
+    export FZF_CTRL_T_OPTS="--preview 'head -n 300 {}'"
+fi
+if (( $+commands[eza] )); then
+    export FZF_ALT_C_OPTS="--preview 'eza --tree --level=2 --color=always --icons=always {}'"
+    # Tab completion of cd (fzf-tab) previews the directory too
+    zstyle ':fzf-tab:complete:(cd|z|__zoxide_z):*' fzf-preview 'eza -1 --color=always --icons=always $realpath'
+fi
+zstyle ':fzf-tab:*' use-fzf-default-opts yes # fzf-tab menus get the colours above
+
+# eza: ls with colours, git status and icons. Plain `ls` stays the system one.
+if (( $+commands[eza] )); then
+    alias ll='eza -l --git --group-directories-first --icons=auto'
+    alias la='eza -la --git --group-directories-first --icons=auto'
+    alias lt='eza --tree --level=2 --group-directories-first --icons=auto'
+fi
+
 function zvm_after_init() {
-    source <(fzf --zsh)
+    (( $+commands[fzf] )) && source <(fzf --zsh)
     zvm_bindkey vicmd 'gs' sshp-widget    # normal mode: "go ssh"
     zvm_bindkey vicmd 'gp' pj-widget
     zvm_bindkey vicmd 'gy' copyfile-widget    # "go yank": pick a file, copy its contents
@@ -45,3 +76,13 @@ source ${ZDOTDIR:-$HOME}/.antidote/antidote.zsh
 antidote load
 compdef _files copyfile   # copyfile <Tab> completes file names
 compdef _files y
+
+# Prompt (~/.config/starship.toml); without starship, a plain one with the directory and exit status
+if (( $+commands[starship] )); then
+    eval "$(starship init zsh)"
+else
+    PROMPT='%F{blue}%~%f %(?.%F{green}.%F{red})❯%f '
+fi
+
+# zoxide, last as its docs ask: `z proj` jumps to the most used directory matching "proj", `zi` picks with fzf
+(( $+commands[zoxide] )) && eval "$(zoxide init zsh)"

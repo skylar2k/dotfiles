@@ -2,6 +2,9 @@ font-family = "JetBrains Mono"
 font-size = 13
 font-thicken = true
 
+# Same colours as Neovim (tokyonight, moon style); fzf and the prompt follow it
+theme = "TokyoNight Moon"
+
 window-decoration = auto
 macos-window-buttons = hidden
 macos-titlebar-style = hidden

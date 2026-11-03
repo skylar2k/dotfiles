@@ -2,7 +2,9 @@
 # macOS uses ~/.config/homebrew/Brewfile instead. Editing a list reruns the script on the next `chezmoi apply`.
 packages:
   arch:
+    - bat
     - chezmoi
+    - eza
     - fd
     - fzf
     - ghostty
@@ -16,6 +18,7 @@ packages:
     - prettier
     - ripgrep
     - ruff
+    - starship
     - stylua
     - tree-sitter-cli
     - uv
@@ -25,12 +28,15 @@ packages:
     - yubikey-manager
     - zig
     - zls
+    - zoxide
     - zsh
   # Gentoo main tree only. Not in it: zls, stylua, lua-language-server, yazi, lazygit, glab, prettier and
   # yaml-language-server; get them from the GURU overlay, `npm -g` or a release binary in ~/.local/bin.
   gentoo:
     - app-crypt/yubikey-manager
     - app-editors/neovim
+    - app-shells/starship
+    - app-shells/zoxide
     - app-shells/fzf
     - app-shells/zsh
     - dev-lang/lua
@@ -41,6 +47,8 @@ packages:
     - dev-vcs/git
     - gui-apps/wl-clipboard
     - net-libs/nodejs
+    - sys-apps/bat
+    - sys-apps/eza
     - sys-apps/fd
     - sys-apps/ripgrep
     - x11-terms/ghostty
