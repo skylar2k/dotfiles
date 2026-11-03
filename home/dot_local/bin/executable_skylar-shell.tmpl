@@ -1,0 +1,21 @@
+#!/bin/sh
+# Your own shell on a shared account (role "guest"). Everything comes from {{ .chezmoi.destDir }}; the account's own
+# dotfiles are not read and nothing is written outside that folder. Run this file, or `ssh <host>-me` from a workstation.
+root={{ .chezmoi.destDir | quote }}
+
+# Neovim, zsh, chezmoi and most other tools follow the XDG folders
+export XDG_CONFIG_HOME="$root/.config" XDG_DATA_HOME="$root/.local/share" XDG_STATE_HOME="$root/.local/state"
+export XDG_CACHE_HOME="$root/.cache"
+# These do not (on macOS) or would also read the account's files, so they are pointed at the folder directly
+export GIT_CONFIG_GLOBAL="$XDG_CONFIG_HOME/git/config" # not the account's ~/.gitconfig
+export STARSHIP_CONFIG="$XDG_CONFIG_HOME/starship.toml" STARSHIP_CACHE="$XDG_CACHE_HOME/starship"
+export _ZO_DATA_DIR="$XDG_DATA_HOME/zoxide"
+export ANTIDOTE_HOME="$XDG_CACHE_HOME/antidote"
+export NVIM_PROFILE=lite
+export PATH="$root/.local/bin:$PATH"
+
+if command -v zsh >/dev/null 2>&1; then
+    export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
+    exec zsh -l "$@"
+fi
+exec bash --rcfile "$root/.bashrc" -i "$@"

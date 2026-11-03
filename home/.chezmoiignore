@@ -1,44 +1,20 @@
-{{- /* Target paths (relative to $HOME) that this machine does not get. A pattern only matches its own level,
-       so folders that hold an external (the antidote clones) also need a /** line. */ -}}
-
-{{- if eq .role "guest" }}
-# A shared account: nothing outside ~/.config/skylar-* is touched
-.zshenv
-.bashrc
-.bash_profile
-.ssh
-Library
-.config/*
-.config/*/**
-!.config/skylar-*
-!.config/skylar-*/**
-{{- else }}
-.config/skylar-*
-.config/skylar-*/**
-{{- end }}
-
-{{- if ne .role "workstation" }}
-# Desktop and development tools are for workstations only
-.zshenv
-.config/zsh
-.config/zsh/**
-.config/ghostty
-.config/yazi
-.config/asm-lsp
-.config/borders
-.config/homebrew
-.ssh
-Library
-{{- end }}
-
-{{- if ne .role "server" }}
-.bashrc
-.bash_profile
-{{- end }}
-
-{{- if ne .chezmoi.os "darwin" }}
-# macOS only
-Library
-.config/borders
-.config/homebrew
+{{- /*
+  Generated from .chezmoidata/configs.yaml: the configs this machine does not get. A pattern only matches its own
+  level, so each path is listed with /** as well, which also covers externals inside it (the antidote clone).
+*/ -}}
+{{- $host := get .hostConfigs .chezmoi.hostname | default dict -}}
+{{- $add := get $host "add" | default list -}}
+{{- $drop := get $host "drop" | default list -}}
+{{- range $name, $config := .configs }}
+{{-   $wanted := has $.role $config.roles -}}
+{{-   if and (hasKey $config "os") (ne $config.os $.chezmoi.os) }}{{ $wanted = false }}{{ end -}}
+{{-   if has $name $add }}{{ $wanted = true }}{{ end -}}
+{{-   if has $name $drop }}{{ $wanted = false }}{{ end -}}
+{{-   if not $wanted }}
+# {{ $name }}
+{{-     range $config.paths }}
+{{ . }}
+{{ . }}/**
+{{-     end }}
+{{-   end }}
 {{- end }}

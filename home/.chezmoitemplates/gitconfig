@@ -1,6 +1,6 @@
 {{- /*
-  Shared by ~/.config/git/config and the guest copy in ~/.config/skylar-git/config.
-  Include paths are relative to the including file, so both directories work.
+  ~/.config/git/config (~/.skylar/.config/git/config for the guest role).
+  Include paths are relative to the including file.
   Default identity: personal on a workstation, work on a work server or guest account.
 */ -}}
 [user]

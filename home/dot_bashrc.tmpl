@@ -1,15 +1,32 @@
-# ~/.bashrc on servers (role "server"). The distro's defaults load first; host-only tweaks go in ~/.bashrc.local.
+# ~/.bashrc on servers (role "server"), and the bash fallback of the guest shell. The distro's defaults load first;
+# host-only tweaks go in .bashrc.local next to this file.
 [ -f /etc/bashrc ] && . /etc/bashrc          # Fedora, RHEL
 [ -f /etc/bash.bashrc ] && . /etc/bash.bashrc # Debian, Ubuntu, Arch
 case $- in *i*) ;; *) return ;; esac          # the rest is for interactive shells only
 
-{{ template "server-shell" . }}
+export EDITOR=nvim VISUAL=nvim
+export NVIM_PROFILE=lite # Neovim loads only the plugins that need no compiler or extra tools
+export LESS=-R
+alias ll='ls -lah'
+alias la='ls -A'
+alias g=git
+alias v=nvim
 
 set -o vi
 HISTSIZE=10000
 HISTFILESIZE=20000
 HISTCONTROL=ignoreboth
+{{- if eq .role "guest" }}
+HISTFILE=$XDG_STATE_HOME/bash/history # not the shared account's ~/.bash_history
+mkdir -p "${HISTFILE%/*}"
+{{- end }}
 shopt -s histappend checkwinsize
-PS1='\[\e[1;31m\]\h\[\e[0m\]:\[\e[34m\]\w\[\e[0m\]\$ ' # hostname in red: you are on a server
 
-[ -f ~/.bashrc.local ] && . ~/.bashrc.local
+if command -v starship >/dev/null; then
+    eval "$(starship init bash)"
+else
+    PS1='\[\e[1;31m\]\h\[\e[0m\]:\[\e[34m\]\w\[\e[0m\]\$ ' # hostname in red: you are on a server
+fi
+command -v zoxide >/dev/null && eval "$(zoxide init bash)"
+
+[ -f "${BASH_SOURCE[0]%/*}/.bashrc.local" ] && . "${BASH_SOURCE[0]%/*}/.bashrc.local"

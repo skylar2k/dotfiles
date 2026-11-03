@@ -7,7 +7,9 @@ set -euo pipefail
 export NVIM_PROFILE=lite
 {{ end -}}
 {{ if eq .role "guest" -}}
-export NVIM_APPNAME=skylar-nvim # the shared account's own Neovim is not touched
+# The shared account's own Neovim is not touched: config, plugins and state all live under ~/.skylar
+root={{ .chezmoi.destDir | quote }}
+export XDG_CONFIG_HOME=$root/.config XDG_DATA_HOME=$root/.local/share XDG_STATE_HOME=$root/.local/state XDG_CACHE_HOME=$root/.cache
 {{ end -}}
 if command -v nvim >/dev/null; then
     # Starting installs missing plugins; target = "lockfile" moves the installed ones to the locked commits

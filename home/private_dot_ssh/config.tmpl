@@ -49,11 +49,7 @@ Host {{ .name }}-me
     User {{ .user }}
 {{- end }}
     RequestTTY yes
-{{- if eq (get . "shell" | default "zsh") "bash" }}
-    RemoteCommand NVIM_APPNAME=skylar-nvim exec bash --rcfile ~/.config/skylar-bash/bashrc -i
-{{- else }}
-    RemoteCommand ZDOTDIR=~/.config/skylar-zsh exec zsh -l
-{{- end }}
+    RemoteCommand exec ~/.skylar/.local/bin/skylar-shell
 {{- end }}
 
 Host *

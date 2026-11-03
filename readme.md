@@ -51,7 +51,7 @@ EOF
 mkdir -p ~/.local/bin && tar -xzf chezmoi_${v}_${arch}.tar.gz -C ~/.local/bin chezmoi # runs only if the check passed
 ```
 
-On a shared (guest) account, use `~/.config/skylar-bin` instead of `~/.local/bin`, so the account's own PATH is not
+On a shared (guest) account, use `~/.skylar/.local/bin` instead of `~/.local/bin`, so the account's own PATH is not
 affected.
 
 The hashes come from the release's `checksums.txt`, whose signature was checked against chezmoi's cosign key.
@@ -65,24 +65,39 @@ To move to a newer release:
 
 ## Roles
 
+Which configs each role gets is set in one place, `home/.chezmoidata/configs.yaml`: every config lists its paths,
+the roles that get it and, optionally, an OS. `.chezmoiignore` is generated from it, and `hostConfigs` there adds or
+drops a config on a single machine by hostname.
+
 | Role          | Gets                                                                                                 |
 | ------------- | ---------------------------------------------------------------------------------------------------- |
-| `workstation` | zsh with antidote, full Neovim, Ghostty, yazi, git, ssh; on macOS also Homebrew, the Brewfile, the key-remap launch agent and borders; on Arch or Gentoo the packages in `home/.chezmoidata/packages.yaml` |
-| `server`      | a Linux host with your own account: `~/.bashrc` (loads the distro's defaults first, then `~/.bashrc.local`), git, Neovim with `NVIM_PROFILE=lite`; nothing is installed |
-| `guest`       | a shared account: only `~/.config/skylar-*` is written, and only loaded when you ask for it |
+| `workstation` | zsh, starship, full Neovim, git, ssh, Ghostty, yazi, asm-lsp; on macOS also the Brewfile, the key-remap launch agent and borders; on Arch or Gentoo the packages in `home/.chezmoidata/packages.yaml` |
+| `server`      | a Linux host with your own account: `~/.bashrc` (the distro's defaults first, then `~/.bashrc.local`), starship, git, Neovim with `NVIM_PROFILE=lite`; nothing is installed |
+| `guest`       | a shared account: zsh, bash, starship, git and lite Neovim, all installed into `~/.skylar` instead of the account's home |
 
-On a guest account the account's own dotfiles stay untouched. Start your setup with:
+### Guest: a shared account
+
+Everything goes into `~/.skylar`, laid out like a home directory (`~/.skylar/.config/zsh`, `~/.skylar/.config/nvim`,
+…), and nothing outside it is written or read. Install with the XDG folders pointed there, so chezmoi keeps its own
+config and clone in `~/.skylar` too:
 
 ```sh
-ZDOTDIR=~/.config/skylar-zsh exec zsh -l                   # macOS
-bash --rcfile ~/.config/skylar-bash/bashrc -i              # Linux
+export XDG_CONFIG_HOME=~/.skylar/.config XDG_DATA_HOME=~/.skylar/.local/share
+chezmoi init --apply skylar2k        # role: guest
 ```
 
-On macOS that is your full zsh config: the same `.zshrc`, functions and plugins, with antidote's plugins kept in
-`~/.config/skylar-zsh/plugins` and its own history file. The first start clones the plugins, so it needs network
-once. Neovim runs as `NVIM_APPNAME=skylar-nvim`, with its own config, data, state and cache folders, and git uses
-`GIT_CONFIG_GLOBAL=~/.config/skylar-git/config`. Add the host to `home/.chezmoidata/hosts.yaml` and your workstation
-gets `ssh <name>-me`, which logs in and starts that shell for you.
+Start your shell with `~/.skylar/.local/bin/skylar-shell`. It sets the XDG folders, git, starship, zoxide and
+antidote to `~/.skylar`, then runs your full zsh config, or bash where there is no zsh. Neovim, plugins included,
+lives under `~/.skylar` too. Inside that shell plain `chezmoi update` works. Add the host to
+`home/.chezmoidata/hosts.yaml`, and your workstation gets `ssh <name>-me`, which logs in and runs the launcher for you.
+
+## zsh
+
+`~/.config/zsh/.zshrc` only loads `conf.d/*.zsh` in name order. Each file covers one topic (options, history, fzf,
+eza, bat, keys, plugins, prompt, zoxide). A file for an optional tool returns early when the tool is missing, and the
+vi normal-mode keys (`gs` ssh, `gp` projects, `gy` copy a file, `gf` yazi) are only bound when their tools exist.
+Copying (`gy`, `copyfile`, and vi yanks like `yy`) goes through `clip`: the local clipboard tool, or OSC 52 over ssh,
+which reaches the clipboard of the machine your terminal runs on.
 
 ## Day to day
 

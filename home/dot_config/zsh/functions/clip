@@ -1,0 +1,32 @@
+# Copy stdin to the clipboard; `clip -o` prints the clipboard.
+# Locally this uses pbcopy, wl-copy or xclip. In an ssh session, or when none of them exists, it sends OSC 52 to the
+# terminal instead, which puts the text on the clipboard of the machine the terminal runs on (Ghostty allows it).
+# Pasting has no OSC 52 fallback: terminals do not hand the clipboard to programs without asking.
+emulate -L zsh
+
+local remote=${SSH_TTY:-$SSH_CONNECTION}
+
+if [[ $1 == -o ]]; then
+  if [[ -z $remote ]] && (( $+commands[pbpaste] )); then pbpaste
+  elif [[ -z $remote && -n $WAYLAND_DISPLAY ]] && (( $+commands[wl-paste] )); then wl-paste -n
+  elif [[ -z $remote && -n $DISPLAY ]] && (( $+commands[xclip] )); then xclip -selection clipboard -o
+  fi
+  return 0
+fi
+
+if [[ -z $remote ]]; then
+  if (( $+commands[pbcopy] )); then pbcopy; return
+  elif [[ -n $WAYLAND_DISPLAY ]] && (( $+commands[wl-copy] )); then wl-copy; return
+  elif [[ -n $DISPLAY ]] && (( $+commands[xclip] )); then xclip -selection clipboard; return
+  fi
+fi
+
+# OSC 52: ESC ] 52 ; c ; <base64 of the text> BEL, written straight to the terminal. Inside tmux it is wrapped so
+# tmux passes it through (needs `set -g allow-passthrough on`).
+local b64
+b64=$(base64 | tr -d '\n') || return
+if [[ -n $TMUX ]]; then
+  printf '\ePtmux;\e\e]52;c;%s\a\e\\' "$b64" > /dev/tty
+else
+  printf '\e]52;c;%s\a' "$b64" > /dev/tty
+fi

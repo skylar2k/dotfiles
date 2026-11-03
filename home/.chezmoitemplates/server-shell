@@ -1,8 +1,0 @@
-{{- /* Shared by the server ~/.bashrc and the guest shells: settings that work in bash and zsh. */ -}}
-export EDITOR=nvim VISUAL=nvim
-export NVIM_PROFILE=lite # Neovim loads only the plugins that need no compiler or extra tools
-export LESS=-R
-alias ll='ls -lah'
-alias la='ls -A'
-alias g=git
-alias v=nvim

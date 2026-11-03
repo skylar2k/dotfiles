@@ -1,19 +1,14 @@
 # Copy the contents of files to the clipboard. Several files are joined in order.
 # With no arguments: copy what is piped in, or (at a terminal) pick one file with fzf.
+# The copying is done by `clip`: the local clipboard tool, or OSC 52 over ssh.
 emulate -L zsh
 
-local -a files=("$@") clip
+local -a files=("$@")
 local file
-
-if (( $+commands[pbcopy] )); then clip=(pbcopy)
-elif [[ -n $WAYLAND_DISPLAY ]] && (( $+commands[wl-copy] )); then clip=(wl-copy)
-elif (( $+commands[xclip] )); then clip=(xclip -selection clipboard)
-else print -u2 "copyfile: no clipboard tool (pbcopy, wl-copy or xclip)"; return 1
-fi
 
 if (( ! $# )); then
   if [[ ! -t 0 ]]; then
-    $clip
+    clip
     return
   fi
   (( $+commands[fzf] && $+commands[fd] )) || { print -u2 "copyfile: no file given (fzf and fd are needed to pick one)"; return 1 }
@@ -27,6 +22,6 @@ for file in $files; do
   [[ -s $file ]] && ! grep -Iq . -- $file && { print -u2 "copyfile: $file: looks like a binary file"; return 1 }
 done
 
-cat -- $files | $clip
+cat -- $files | clip || { print -u2 "copyfile: copying failed"; return 1 }
 local count=$(cat -- $files | grep -c '')
 print "Copied $count line${${count:#1}:+s} from ${(j:, :)files:t}"

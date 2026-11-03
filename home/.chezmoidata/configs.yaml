@@ -1,0 +1,24 @@
+# Which config goes to which machine. `.chezmoiignore` is generated from this: a machine gets a config when its role
+# is listed (and its OS matches `os`, when set); everything else in `paths` is left out, folders including their
+# contents. Paths are relative to chezmoi's destination: $HOME, or ~/.skylar for the guest role.
+#
+# To add a config: put its files under home/ and add an entry here. A file in home/ that no entry claims is installed
+# everywhere, so give every new file an entry.
+configs:
+  zsh:        { paths: [.zshenv, .config/zsh], roles: [workstation, guest] }
+  bash:       { paths: [.bashrc, .bash_profile], roles: [server, guest] }
+  starship:   { paths: [.config/starship.toml], roles: [workstation, server, guest] }
+  nvim:       { paths: [.config/nvim], roles: [workstation, server, guest] }
+  git:        { paths: [.config/git], roles: [workstation, server, guest] }
+  ssh:        { paths: [.ssh], roles: [workstation] }
+  ghostty:    { paths: [.config/ghostty], roles: [workstation] }
+  yazi:       { paths: [.config/yazi], roles: [workstation] }
+  asm-lsp:    { paths: [.config/asm-lsp], roles: [workstation] }
+  homebrew:   { paths: [.config/homebrew], roles: [workstation], os: darwin }
+  borders:    { paths: [.config/borders], roles: [workstation], os: darwin }
+  launchd:    { paths: [Library], roles: [workstation], os: darwin }
+  guest-shell: { paths: [.local/bin/skylar-shell], roles: [guest] }
+
+# Exceptions for single machines, by hostname (`chezmoi execute-template '{{ .chezmoi.hostname }}'`):
+#   eplebakst3: { add: [yazi], drop: [starship] }
+hostConfigs: {}

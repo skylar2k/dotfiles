@@ -5,7 +5,7 @@
   role:
     workstation  this Mac or the personal Linux box: everything, packages included
     server       a Linux host with your own account: bash, git, lite Neovim
-    guest        a shared account: only ~/.config/skylar-*, loaded when you ask for it
+    guest        a shared account: everything goes into ~/.skylar and loads only through ~/.skylar/.local/bin/skylar-shell
 */ -}}
 {{- $role := promptChoiceOnce . "role" "Machine role" (list "workstation" "server" "guest") -}}
 {{- $work := promptBoolOnce . "work" "Work machine (UiB)" -}}
@@ -24,6 +24,10 @@
 # Templates, private and executable files are written as real files: change those in the source.
 mode = "symlink"
 sourceDir = {{ .chezmoi.sourceDir | dir | quote }}
+{{- if eq $role "guest" }}
+# A shared account: the files go under ~/.skylar instead of the account's own home
+destDir = {{ joinPath .chezmoi.homeDir ".skylar" | quote }}
+{{- end }}
 
 [data]
 role = {{ $role | quote }}

@@ -1,11 +1,9 @@
 # Shared accounts where you use the `guest` role. Each entry adds `Host <name>-me` to ~/.ssh/config on
-# workstations: it logs in and starts your own shell (skylar-zsh or skylar-bash) instead of the account's.
+# workstations: it logs in and runs ~/.skylar/.local/bin/skylar-shell, your own zsh (or bash) instead of the account's.
 #   - name: sharedmac            # alias: `ssh sharedmac-me`
 #     hostname: sharedmac.uib.no
 #     user: admin                # optional
-#     shell: zsh                 # zsh (macOS) or bash (Linux)
 guestHosts:
   - name: eplebakst3
     hostname: eplebakst3.uib.no
     user: munki
-    shell: zsh

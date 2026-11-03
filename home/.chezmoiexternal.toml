@@ -1,11 +1,6 @@
-# antidote, the zsh plugin manager (workstations; see .chezmoiignore). Pulled again weekly by `chezmoi apply`.
+# antidote, the zsh plugin manager (zsh config; see .chezmoidata/configs.yaml). Pulled again weekly by `chezmoi apply`.
 [".config/zsh/.antidote"]
     type = "git-repo"
     url = "https://github.com/mattmc3/antidote.git"
     refreshPeriod = "168h"
 
-# The same for the guest shell on a shared account (guest role only)
-[".config/skylar-zsh/.antidote"]
-    type = "git-repo"
-    url = "https://github.com/mattmc3/antidote.git"
-    refreshPeriod = "168h"
