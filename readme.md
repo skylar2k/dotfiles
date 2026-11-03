@@ -78,7 +78,9 @@ ZDOTDIR=~/.config/skylar-zsh exec zsh -l                   # macOS
 bash --rcfile ~/.config/skylar-bash/bashrc -i              # Linux
 ```
 
-There Neovim runs as `NVIM_APPNAME=skylar-nvim` (its own config, data, state and cache folders) and git uses
+On macOS that is your full zsh config: the same `.zshrc`, functions and plugins, with antidote's plugins kept in
+`~/.config/skylar-zsh/plugins` and its own history file. The first start clones the plugins, so it needs network
+once. Neovim runs as `NVIM_APPNAME=skylar-nvim`, with its own config, data, state and cache folders, and git uses
 `GIT_CONFIG_GLOBAL=~/.config/skylar-git/config`. Add the host to `home/.chezmoidata/hosts.yaml` and your workstation
 gets `ssh <name>-me`, which logs in and starts that shell for you.
 

@@ -1,0 +1,9 @@
+# Your full zsh config on a shared macOS account (role "guest"). The account's own ~/.zshenv, ~/.zprofile and
+# ~/.zshrc are not read; .zshrc, the functions and the plugin list here are the same as on your workstation.
+#   ZDOTDIR=~/.config/skylar-zsh exec zsh -l          (or `ssh <host>-me` from your workstation)
+export ZDOTDIR=~/.config/skylar-zsh
+export ANTIDOTE_HOME=$ZDOTDIR/plugins                # plugin clones stay here, not in the shared ~/Library/Caches
+export NVIM_APPNAME=skylar-nvim                      # Neovim uses ~/.config/skylar-nvim and its own data dirs
+export NVIM_PROFILE=lite
+export GIT_CONFIG_GLOBAL=~/.config/skylar-git/config # your git identity, not the account's
+export EDITOR=nvim VISUAL=nvim

@@ -1,3 +1,0 @@
-# Your shell on a shared macOS account (role "guest"); the account's own ~/.zshrc and ~/.zprofile are not read.
-#   ZDOTDIR=~/.config/skylar-zsh exec zsh -l          (or `ssh <host>-me` from your workstation)
-export ZDOTDIR=~/.config/skylar-zsh

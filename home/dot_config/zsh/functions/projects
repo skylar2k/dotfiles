@@ -1,3 +1,11 @@
+# Pick a directory in ~/projects with fzf and cd into it
+emulate -L zsh
+
+(( $+commands[fzf] )) || { print -u2 "projects: fzf not found"; return 1 }
+
+local -a dirs=( ~/projects/*(-/N:t) )
+(( $#dirs )) || { print -u2 "projects: nothing in ~/projects"; return 1 }
+
 local choice
-choice=$(print -rl -- ~/projects/*(-/N:t) | zmenu -c -p 'project:') || return
+choice=$(print -rl -- $dirs | fzf --height 40% --reverse --prompt 'project: ') || return
 cd ~/projects/$choice

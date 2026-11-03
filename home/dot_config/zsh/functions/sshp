@@ -1,9 +1,10 @@
-# Pick an ssh host from ~/.ssh/config with zmenu, then connect. Extra arguments go to ssh.
+# Pick an ssh host from ~/.ssh/config with fzf, then connect. Extra arguments go to ssh.
 # A name like "xzar.uib.no" is hidden when its short form "xzar" is also listed.
+# Typing a host that is not listed and pressing Enter connects to what you typed.
 emulate -L zsh
 setopt extended_glob
 
-(( $+commands[zmenu] )) || { print -u2 "sshp: zmenu not found"; return 1 }
+(( $+commands[fzf] )) || { print -u2 "sshp: fzf not found"; return 1 }
 
 local file name
 local -a lines names entries
@@ -23,7 +24,13 @@ for name in $names; do
 done
 (( $#entries )) || { print -u2 "sshp: no hosts in ~/.ssh/config"; return 1 }
 
+local -a out
 local choice
-choice=$(print -rl -- ${(oui)entries} | zmenu -c -i -p 'ssh:') || return
+# --print-query prints what was typed, then the pick. With no match, Enter prints only the query (exit 1);
+# Esc and Ctrl-C exit 130.
+out=( "${(@f)$(print -rl -- ${(oui)entries} | fzf --height 40% --reverse --prompt 'ssh: ' --print-query)}" )
+(( $? == 130 )) && return 1
+choice=${out[2]:-$out[1]}
+[[ -n $choice ]] || return 1
 [[ $choice == -* ]] && { print -u2 "sshp: not a host: $choice"; return 1 }  # typed text could look like an option
 ssh "$choice" "$@"
