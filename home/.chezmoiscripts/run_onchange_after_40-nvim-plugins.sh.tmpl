@@ -8,7 +8,8 @@ export NVIM_PROFILE=lite
 {{ end -}}
 {{ if eq .role "guest" -}}
 # The shared account's own Neovim is not touched: config, plugins and state all live under ~/.skylar
-root={{ .chezmoi.destDir | quote }}
+# The same folder as destDir in .chezmoi.toml.tmpl (.chezmoi.destDir is still $HOME during `chezmoi init --apply`)
+root={{ joinPath .chezmoi.homeDir ".skylar" | quote }}
 export XDG_CONFIG_HOME=$root/.config XDG_DATA_HOME=$root/.local/share XDG_STATE_HOME=$root/.local/state XDG_CACHE_HOME=$root/.cache
 {{ end -}}
 if command -v nvim >/dev/null; then

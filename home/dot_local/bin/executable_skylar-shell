@@ -1,7 +1,8 @@
 #!/bin/sh
-# Your own shell on a shared account (role "guest"). Everything comes from {{ .chezmoi.destDir }}; the account's own
-# dotfiles are not read and nothing is written outside that folder. Run this file, or `ssh <host>-me` from a workstation.
-root={{ .chezmoi.destDir | quote }}
+# Your own shell on a shared account (role "guest"). Everything comes from the folder this file is installed in
+# (~/.skylar: this is ~/.skylar/.local/bin/skylar-shell); the account's own dotfiles are not read and nothing is written
+# outside that folder. Run this file, or `ssh <host>-me` from a workstation.
+root=$(cd "$(dirname "$0")/../.." && pwd) || exit 1
 
 # Neovim, zsh, chezmoi and most other tools follow the XDG folders
 export XDG_CONFIG_HOME="$root/.config" XDG_DATA_HOME="$root/.local/share" XDG_STATE_HOME="$root/.local/state"

@@ -25,7 +25,8 @@
 mode = "symlink"
 sourceDir = {{ .chezmoi.sourceDir | dir | quote }}
 {{- if eq $role "guest" }}
-# A shared account: the files go under ~/.skylar instead of the account's own home
+# A shared account: the files go under ~/.skylar instead of the account's own home (the nvim-plugins script uses the
+# same path)
 destDir = {{ joinPath .chezmoi.homeDir ".skylar" | quote }}
 {{- end }}
 
