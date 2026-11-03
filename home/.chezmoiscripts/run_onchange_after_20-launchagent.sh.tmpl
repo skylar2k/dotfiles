@@ -1,6 +1,6 @@
 {{ if and (eq .chezmoi.os "darwin") (eq .role "workstation") -}}
 #!/bin/bash
-# (Re)load the key-remap launch agent whenever the plist changes: {{ include "Library/LaunchAgents/rs.unix.hidutil-rebind.plist" | sha256sum }}
+# (Re)load the key-remap launch agent whenever the plist changes: {{ include "private_Library/LaunchAgents/rs.unix.hidutil-rebind.plist" | sha256sum }}
 set -euo pipefail
 plist="$HOME/Library/LaunchAgents/rs.unix.hidutil-rebind.plist"
 label=$(/usr/libexec/PlistBuddy -c 'Print :Label' "$plist")
