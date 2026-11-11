@@ -1,10 +1,14 @@
 # Default for every assembly file that is not inside a project with its own .asm-lsp.toml:
 # ARM64 in GNU syntax, which is what clang and `as` use on Apple Silicon.
-# The compiler used for diagnostics is picked by asm-lsp itself (gcc, then clang).
+# Diagnostics come from `zig cc`, cross-compiling for aarch64 Linux.
+# asm-lsp reads this from ~/.config/asm-lsp on Linux and ~/Library/Application Support/asm-lsp on macOS (a link back
+# to this file). The options must be under default_config: a top-level [opts] table is silently ignored.
 [default_config]
 assembler = "gas"
 instruction_set = "arm64"
 
-[opts]
+[default_config.opts]
+compiler = "zig"
+compile_flags_txt = ["cc", "-x", "assembler-with-cpp", "-target", "aarch64-linux-gnu"]
 diagnostics = true
 default_diagnostics = true
