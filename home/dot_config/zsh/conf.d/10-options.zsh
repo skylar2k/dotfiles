@@ -16,3 +16,5 @@ ZVM_SYSTEM_CLIPBOARD_ENABLED=true
 ZVM_CLIPBOARD_COPY_CMD=clip
 ZVM_CLIPBOARD_PASTE_CMD='clip -o'
 typeset -ga zvm_after_init_commands # later files add key bindings that must run after zsh-vi-mode starts
+
+export EDITOR="nvim"
