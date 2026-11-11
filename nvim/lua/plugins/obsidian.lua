@@ -43,27 +43,77 @@ return {
         { src = "https://github.com/obsidian-nvim/obsidian.nvim", version = vim.version.range("*") },
     },
     setup = function()
+        local function cmd(name)
+            return "<cmd>Obsidian " .. name .. "<cr>"
+        end
+
+        -- The vault layout (see "How this vault works" in the vault): a flat vault where the file name is the
+        -- title, templates in templates/, daily notes in daily/, attachments in attachments/.
         require("obsidian").setup({
             legacy_commands = false, -- only `:Obsidian <subcommand>`
             workspaces = workspaces,
             picker = { name = "telescope.nvim" },
             -- render-markdown draws the checkboxes, bullets and links; two renderers on one buffer clash
             ui = { enable = false },
+
+            new_notes_location = "notes_subdir", -- no notes_subdir: the vault root
+            -- File name = title, without the characters that break file names or wiki links; a note without a
+            -- title (a quick capture) gets a timestamp ID
+            note_id_func = function(title)
+                if title ~= nil and title ~= "" then
+                    return (title:gsub('[/\\:*?"<>|#^%[%]]', ""))
+                end
+                return require("obsidian.builtin").zettel_id()
+            end,
+            note = { template = "note.md" }, -- for :Obsidian new
+            templates = { folder = "templates", date_format = "YYYY-MM-DD", time_format = "HH:mm" },
+            unique_note = { enabled = true, format = "YYYYMMDDHHmm", template = "capture.md" }, -- quick capture
+            daily_notes = {
+                enabled = true,
+                folder = "daily",
+                date_format = "YYYY-MM-DD",
+                template = "daily.md",
+                default_tags = { "daily" },
+                workdays_only = false,
+            },
+            attachments = { folder = "attachments" }, -- for :Obsidian paste_img (needs pngpaste on macOS)
+            -- Update links without asking when a note is renamed outside Neovim
+            link = { style = "wiki", format = "shortest", auto_update = true },
+            -- An index for faster quick_switch and completion, and for link suggestions. Kept in Neovim's cache
+            -- folder, not in the vault.
+            cache = { enabled = true },
+            frontmatter = { sort = { "id", "aliases", "tags", "type", "created" } },
+
+            callbacks = {
+                -- Keys that only exist inside notes. The language server adds Neovim's own: gf follows a link,
+                -- grr lists backlinks, grn renames the note and its links, gra offers actions, gO lists headings.
+                enter_note = function()
+                    local function map(lhs, rhs, desc)
+                        vim.keymap.set("n", lhs, rhs, { buffer = true, desc = desc })
+                    end
+                    local actions = require("obsidian.actions")
+                    map("<leader>ob", cmd("backlinks"), "Backlinks of this note")
+                    map("<leader>ol", cmd("links"), "Links in this note")
+                    map("<leader>oT", cmd("template"), "Insert a template")
+                    map("<leader>oa", actions.add_tag, "Add a tag")
+                    map("<leader>oL", actions.link_suggestions, "Unlinked mentions")
+                end,
+            },
         })
 
-        local function map(lhs, cmd, desc, mode)
-            vim.keymap.set(mode or "n", lhs, "<cmd>Obsidian " .. cmd .. "<cr>", { desc = desc })
+        local function map(lhs, name, desc)
+            vim.keymap.set("n", lhs, cmd(name), { desc = desc })
         end
 
         map("<leader>oo", "quick_switch", "Open a note")
-        map("<leader>on", "new", "New note")
         map("<leader>os", "search", "Search the vault")
-        map("<leader>ot", "tags", "Find notes by tag")
+        map("<leader>on", "new_from_template", "New note from a template")
+        map("<leader>oc", "unique_note", "Quick capture")
         map("<leader>od", "today", "Today's daily note")
         map("<leader>oD", "dailies", "Pick a daily note")
-        map("<leader>ob", "backlinks", "Backlinks of this note")
-        map("<leader>ol", "links", "Links in this note")
-        map("<leader>oc", "toc", "Table of contents")
+        map("<leader>ot", "tags", "Find notes by tag")
+        map("<leader>op", "properties", "Find notes by property")
+        map("<leader>oi", "tags inbox", "Inbox")
         map("<leader>or", "rename", "Rename note and update links")
         map("<leader>ow", "workspace", "Switch vault")
     end,

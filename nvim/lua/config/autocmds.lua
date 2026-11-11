@@ -46,6 +46,10 @@ vim.api.nvim_create_autocmd("FileType", {
     end,
 })
 
+-- The asm parser covers ARM and AArch64 too (there is no separate one): use it for Markdown code blocks
+-- marked ```armasm, ```aarch64 or ```arm64. Assembly files (filetype asm) use it already.
+vim.treesitter.language.register("asm", { "armasm", "aarch64", "arm64", "arm" })
+
 -- Keep splits equal when the terminal is resized
 vim.api.nvim_create_autocmd("VimResized", {
     group = group,

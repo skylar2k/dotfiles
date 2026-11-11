@@ -2,9 +2,9 @@ local opt = vim.opt
 
 -- Options newer than some Neovim this config runs on (servers): set only where they exist
 local function set_new(name, value)
-    if vim.fn.exists("+" .. name) == 1 then
-        opt[name] = value
-    end
+	if vim.fn.exists("+" .. name) == 1 then
+		opt[name] = value
+	end
 end
 
 -- UI
@@ -23,9 +23,10 @@ opt.confirm = true -- ask instead of failing when quitting with unsaved changes
 
 -- Editing
 opt.expandtab = true
-opt.shiftwidth = 4
-opt.tabstop = 4
+opt.shiftwidth = 2
+opt.tabstop = 2
 opt.smartindent = true
+vim.g.markdown_recommended_style = 0 -- don't let Neovim's Markdown settings force 4 (ftplugin/markdown.lua sets 2)
 opt.clipboard = "unnamedplus"
 opt.undofile = true
 

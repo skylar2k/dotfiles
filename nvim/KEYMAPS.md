@@ -226,6 +226,10 @@ render-markdown.nvim; insert mode shows the plain text. Lines wrap at word bound
 | Key | Action |
 | --- | --- |
 | `<leader>mr` | Toggle the rendering in this buffer **(full)** |
+| `<leader>mi` | Show the image under the cursor in a float **(full)** |
+
+Images (`![alt](path)`, `![[image.png]]` embeds, `<img>`) are drawn below their line in Ghostty, kitty and WezTerm,
+inside tmux too; other terminals show the text only. Formats other than PNG need ImageMagick (in the Brewfile).
 
 Notes inside an Obsidian vault get the vault features on top. A vault is a folder with a `.obsidian` directory, one
 level below `~/Documents`, `~/Notes` or the Obsidian iCloud folder (edit the lists at the top of
@@ -236,18 +240,26 @@ level below `~/Documents`, `~/Notes` or the Obsidian iCloud folder (edit the lis
 | `<CR>` | On a link follow it, on a tag list its notes, on a checkbox toggle it |
 | `]o` / `[o` | Next / previous link in the note |
 | `<leader>oo` | Open a note (Telescope) |
-| `<leader>on` | New note |
+| `<leader>on` | New note from a template |
+| `<leader>oc` | Quick capture: a timestamped note from `capture.md` |
 | `<leader>os` | Search the vault |
-| `<leader>ot` | Find notes by tag |
+| `<leader>ot` / `<leader>op` | Find notes by tag / by property |
+| `<leader>oi` | Inbox (notes tagged `inbox`) |
 | `<leader>od` / `<leader>oD` | Today's daily note / pick a daily note |
-| `<leader>ob` | Backlinks of this note |
-| `<leader>ol` | Links in this note |
-| `<leader>oc` | Table of contents |
 | `<leader>or` | Rename the note and update links to it |
 | `<leader>ow` | Switch vault |
+| `<leader>ob` / `<leader>ol` | Backlinks of this note / links in it (inside a note) |
+| `<leader>oT` | Insert a template (inside a note) |
+| `<leader>oa` / `<leader>oL` | Add a tag / unlinked mentions (inside a note) |
+| `gf` | Follow the link under the cursor |
+| `grr` / `grn` / `gra` | Backlinks / rename the note and its links / note actions (extract, merge, move…) |
+| `gO` | Headings in this note |
 
-`:Obsidian` lists the other commands (templates, pasting images, `check`). Completion of `[[` links comes from the
-language-server completion.
+The vault layout is set in `lua/plugins/obsidian.lua`: new notes in the vault root, named after their title;
+templates in `templates/` (`note.md`, `daily.md`, `capture.md`); daily notes in `daily/`; pasted images in
+`attachments/`. Notes fold by heading, and prettier formats them on save like any Markdown. `:Obsidian` lists the
+other commands (`paste_img`, `check`, …).
+Completion of `[[` links comes from the language-server completion.
 
 ## Completion
 
