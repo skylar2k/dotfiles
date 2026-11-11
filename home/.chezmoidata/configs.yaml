@@ -13,10 +13,13 @@ configs:
   ssh:        { paths: [.ssh], roles: [workstation] }
   ghostty:    { paths: [.config/ghostty], roles: [workstation] }
   yazi:       { paths: [.config/yazi], roles: [workstation] }
-  asm-lsp:    { paths: [.config/asm-lsp], roles: [workstation] }
+  # asm-lsp reads ~/Library/Application Support on macOS: a link there points back to ~/.config/asm-lsp
+  asm-lsp:    { paths: [.config/asm-lsp, "Library/Application Support/asm-lsp"], roles: [workstation] }
   homebrew:   { paths: [.config/homebrew], roles: [workstation], os: darwin }
   borders:    { paths: [.config/borders], roles: [workstation], os: darwin }
-  launchd:    { paths: [Library], roles: [workstation], os: darwin }
+  launchd:    { paths: [Library/LaunchAgents], roles: [workstation], os: darwin }
+  # ~/Library itself, so it is never created on Linux
+  library:    { paths: [Library], roles: [workstation], os: darwin }
   guest-shell: { paths: [.local/bin/skylar-shell], roles: [guest] }
 
 # Exceptions for single machines, by hostname (`chezmoi execute-template '{{ .chezmoi.hostname }}'`):
